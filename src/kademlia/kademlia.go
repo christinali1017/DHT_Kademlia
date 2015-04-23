@@ -2,6 +2,7 @@ package kademlia
 
 // Contains the core kademlia type. In addition to core state, this type serves
 // as a receiver for the RPC methods, which is required by that package.
+//Git Test
 
 import (
 	"fmt"
