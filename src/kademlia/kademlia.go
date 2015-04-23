@@ -113,8 +113,7 @@ func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 
 	k.UpdateContact(pong.Sender)
 
-
-	return "OK: Succeed"
+	return "ok"
 }
 
 func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
@@ -157,7 +156,7 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 
 /*************************Methods for bucket***************************/
 
-func (k *Kademlia) UpdateContact(contact Contact) string{
+func (k *Kademlia) UpdateContact(contact Contact){
 	//Find bucket
 	bucket := k.FindBucketIndex(contact.NodeID)
 
@@ -182,7 +181,7 @@ func (k *Kademlia) UpdateContact(contact Contact) string{
 			/*if least recent contact respond, ignore the new contact and move the least recent contact to 
 			  the end of the bucket
 			*/
-			if pingresult != "PingError"{
+			if pingresult == "ok"{
 				bucket.MoveToBack(front)
 
 			// if it does not respond, delete it and add the new contact to the end of the bucket
@@ -192,11 +191,8 @@ func (k *Kademlia) UpdateContact(contact Contact) string{
 			}
 
 		}
-	
-
 
 	}
-	return "ok"
 }
 
 
