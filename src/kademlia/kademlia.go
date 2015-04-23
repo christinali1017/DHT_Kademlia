@@ -12,18 +12,18 @@ import (
 	"net/rpc"
     "strconv"
     "container/list"
+    "sync"
 )
 
-const (
-	alpha = 3
-	b     = 8 * IDBytes
-	k     = 20
-)
-
-
+// const (
+// 	alpha = 3
+// 	b     = 8 * IDBytes
+// 	k     = 20
+// )
 const (
 	numberofbuckets  = 8 * IDBytes
 	maxbucketsize    = 20
+	alpha = 3
 )
 
 
@@ -101,7 +101,7 @@ func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 	ping.MsgID = NewRandomID()
 	ping.Sender = k.SelfContact
 
-	var pong PongMessage
+	pong := new(PongMessage)
 	client, err := rpc.DialHTTP("tcp", string(host) + ":" + string(port))
 	err = client.Call("KademliaCore.Ping", ping, pong)
 
@@ -117,30 +117,29 @@ func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 }
 
 func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
-	//Check if node is alive
-	client, err = rpc.DialHTTP("tcp",  string(contact.Host) + ":" + string(contact.Port))
-
-	if err != nil{
-		k.RemoveContact(contact)
-	}
-
-	//create store request
+	//create store request and result
 	storeRequest := new(StoreRequest)
 	storeRequest.MsgID = NewRandomID()
 	storeRequest.Sender = k.SelfContact
 	storeRequest.Key = key
 	storeRequest.Value = value
 
-	var storeResult StoreResult
+	storeResult := new(StoreResult)
 
 	// store 
+	client, err := rpc.DialHTTP("tcp", string(contact.Host) + ":" + string(contact.Port))
+
+	if err != nil {
+		return err.Error()
+	}
+
 	err = client.Call("KademliaCore.Store", storeRequest, storeResult)
 
 	//check error
 	if err != nil{
 		return err.Error()
 	}
-
+	k.UpdateContact(*contact)
 	defer client.Close()
 	return "ok"
 }
@@ -177,7 +176,9 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 }
 
 
-/*************************Methods for bucket***************************/
+///////////////////////////////////////////////////////////////////////////////
+// methods for bucket
+///////////////////////////////////////////////////////////////////////////////
 
 func (k *Kademlia) UpdateContact(contact Contact){
 	//Find bucket
@@ -237,7 +238,14 @@ func (k *Kademlia) FindContactInBucket(nodeId ID, bucket *list.List) (*list.Elem
 }
 
 
-finc (k *Kademlia) RemoveContact(contact Contact){
-	//Todo implement
-}
+///////////////////////////////////////////////////////////////////////////////
+// questions
+///////////////////////////////////////////////////////////////////////////////
+
+// 1. When store, if the key has already exist, should we replace the original value? 
+
+
+
+
+
 

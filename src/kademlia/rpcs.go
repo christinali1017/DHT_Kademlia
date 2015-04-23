@@ -34,11 +34,13 @@ type PongMessage struct {
 
 //USE kc call Ping method
 func (kc *KademliaCore) Ping(ping PingMessage, pong *PongMessage) error {
-	// TODO: Finish implementation
 	pong.MsgID = CopyID(ping.MsgID)
+
     // Specify the sender
     pong.Sender = ((*kc).kademlia).SelfContact
+
 	// Update contact, etc
+	((*kc).kademlia).UpdateContact(ping.Sender)
 
 	return nil
 }
@@ -59,7 +61,15 @@ type StoreResult struct {
 }
 
 func (kc *KademliaCore) Store(req StoreRequest, res *StoreResult) error {
-	// TODO: Implement.
+	k := (*kc).kademlia
+
+	// store 
+	k.storeMutex.Lock()
+	k.storeMap[req.Key] = req.Value
+	k.storeMutex.Unlock()
+
+	//update contact
+	k.UpdateContact(req.Sender)
 	return nil
 }
 
