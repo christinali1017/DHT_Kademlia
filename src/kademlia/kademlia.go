@@ -32,6 +32,8 @@ type Kademlia struct {
 	NodeID ID
     SelfContact Contact
     buckets [IDBytes * 8]*list.List
+    storeMutex sync.Mutex
+    storeMap map[ID][]byte
 }
 
 
@@ -80,7 +82,6 @@ func (e *NotFoundError) Error() string {
 }
 
 func (k *Kademlia) FindContact(nodeId ID) (*Contact, error) {
-	// TODO: Search through contacts, find specified ID
 	// Find contact with provided ID
     if nodeId == k.SelfContact.NodeID {
         return &k.SelfContact, nil
@@ -96,7 +97,6 @@ func (k *Kademlia) FindContact(nodeId ID) (*Contact, error) {
 
 // This is the function to perform the RPC
 func (k *Kademlia) DoPing(host net.IP, port uint16) string {
-	// TODO: Implement
 	ping := new(PingMessage)
 	ping.MsgID = NewRandomID()
 	ping.Sender = k.SelfContact
@@ -117,9 +117,32 @@ func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 }
 
 func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
-	// TODO: Implement
-	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	return "ERR: Not implemented"
+	//Check if node is alive
+	client, err = rpc.DialHTTP("tcp",  string(contact.Host) + ":" + string(contact.Port))
+
+	if err != nil{
+		k.RemoveContact(contact)
+	}
+
+	//create store request
+	storeRequest := new(StoreRequest)
+	storeRequest.MsgID = NewRandomID()
+	storeRequest.Sender = k.SelfContact
+	storeRequest.Key = key
+	storeRequest.Value = value
+
+	var storeResult StoreResult
+
+	// store 
+	err = client.Call("KademliaCore.Store", storeRequest, storeResult)
+
+	//check error
+	if err != nil{
+		return err.Error()
+	}
+
+	defer client.Close()
+	return "ok"
 }
 
 func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
@@ -211,5 +234,10 @@ func (k *Kademlia) FindContactInBucket(nodeId ID, bucket *list.List) (*list.Elem
 		}
 	}
 	return nil, &NotFoundError{nodeId, "Not found"}
+}
+
+
+finc (k *Kademlia) RemoveContact(contact Contact){
+	//Todo implement
 }
 
