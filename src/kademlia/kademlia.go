@@ -105,16 +105,15 @@ func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 	err = client.Call("KademliaCore.Ping", ping, pong)
 
 	if err != nil{
-		return "PingError"
+		return "ERR: " + err.Error()
 	}
 
+	defer client.Close()
+
 	k.UpdateContact(pong.Sender)
-	client.Close()
-
-	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
 
 
-	return "ERR: Not implemented"
+	return "OK: Succeed"
 }
 
 func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
@@ -196,7 +195,6 @@ func (k *Kademlia) UpdateContact(contact Contact) string{
 
 
 	}
-	//todo error handle
 	return "ok"
 }
 
@@ -217,30 +215,4 @@ func (k *Kademlia) FindContactInBucket(nodeId ID, bucket *list.List) (*list.Elem
 	}
 	return nil, &NotFoundError{nodeId, "Not found"}
 }
-
-
-
-
-/*******************************************history**********************************/
-
-/*
-func (k *Kademlia) FindContact(nodeId ID) (*Contact, error) {
-	// TODO: Search through contacts, find specified ID
-	// Find contact with provided ID
-    if nodeId == k.SelfContact.NodeID {
-        return &k.SelfContact, nil
-    }
-    prefixLength := k.FindBucketIndex(nodeId)
-    bucket := k.buckets[prefixLength];
-
-	for i := bucket.Front(); i != nil; i = i.Next(){
-		c := i.Value.(Contact)
-		if c.NodeID.Equals(nodeId){
-			return &c,nil;
-		}
-	}
-	return nil, &NotFoundError{nodeId, "Not found"}
-}
-
-*/
 

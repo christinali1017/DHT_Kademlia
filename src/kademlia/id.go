@@ -62,7 +62,6 @@ func (id ID) PrefixLen() int {
 			}
 		}
 	}
-
 	return IDBytes * 8
 }
 
