@@ -6,7 +6,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"math/rand"
-	"fmt"
 )
 
 // IDs are 160-bit ints. We're going to use byte arrays with a number of
@@ -51,18 +50,16 @@ func (id ID) Less(other ID) bool {
 	return id.Compare(other) < 0
 }
 
-// Return the number of consecutive zeroes, starting from the low-order bit, in
-// a ID.
+// Return the number of consecutive zeroes in an ID
 func (id ID) PrefixLen() int {
-	for i := 0; i < IDBytes; i++ {
-		for j := 0; j < 8; j++ {
-			if (id[i]>>uint8(j))&0x1 != 0 {
-				fmt.Printf("prefix len", (8 * i) + j)
-				return (8 * i) + j
-			}
-		}
-	}
-	return IDBytes * 8
+    for i := 0; i < IDBytes; i++ {
+        for j := 7; j >= 0; j-- {
+            if (id[i]>>uint8(j))&0x1 != 0 {
+                return (8 * i) + (7 - j)
+            }
+        }
+    }
+    return IDBytes * 8
 }
 
 // Generate a new ID from nothing.
