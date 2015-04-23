@@ -6,6 +6,7 @@ package kademlia
 
 import (
 	"net"
+	"errors"
 )
 
 type KademliaCore struct {
@@ -70,6 +71,7 @@ func (kc *KademliaCore) Store(req StoreRequest, res *StoreResult) error {
 
 	//update contact
 	k.UpdateContact(req.Sender)
+	res.Err = nil
 	return nil
 }
 
@@ -112,6 +114,44 @@ type FindValueResult struct {
 }
 
 func (kc *KademliaCore) FindValue(req FindValueRequest, res *FindValueResult) error {
-	// TODO: Implement.
+	k := (*kc).kademlia
+
+	// test if key exists in map, if exists, ok = true
+	value, ok := k.storeMap[req.Key]
+
+	//if key exists
+	if ok {
+		res.MsgID = req.MsgID
+		res.Value = value
+		res.Nodes = nil
+		res.Err = nil
+
+	//if not found,  Otherwise the RPC is equivalent to a FIND_NODE and a set of k triples is returned.
+	}else{
+
+		//create find node request and result
+		findNodeRequest := new(FindNodeRequest)
+		findNodeRequest.Sender = req.Sender
+		findNodeRequest.MsgID = NewRandomID()
+		findNodeRequest.NodeID = req.Key
+
+		findNodeRes := new(FindNodeResult)
+
+		//find node
+		err := kc.FindNode(*findNodeRequest, findNodeRes)
+		if err != nil{
+			res.Err = errors.New("Find Node Error")
+		}
+
+		res.MsgID = req.MsgID
+		res.Value = nil
+		res.Nodes = findNodeRes.Nodes
+		res.Err = nil
+
+	}
+
+	//update contact
+	k.UpdateContact(req.Sender)
+
 	return nil
 }

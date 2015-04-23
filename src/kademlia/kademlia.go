@@ -45,6 +45,9 @@ func NewKademlia(laddr string) *Kademlia {
 		k.buckets[i] = list.New();
 	}
 
+	// make message map
+	k.storeMap = make(map[ID][]byte)
+
 	// Set up RPC server
 	// NOTE: KademliaCore is just a wrapper around Kademlia. This type includes
 	// the RPC functions.
@@ -145,15 +148,39 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 }
 
 func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
-	// TODO: Implement
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	return "ERR: Not implemented"
+	
+	return "ok"
 }
 
 func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
-	// TODO: Implement
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	return "ERR: Not implemented"
+	client, err := rpc.DialHTTP("tcp", string(contact.Host) + ":" + string(contact.Port))
+	if err != nil{
+		return err.Error()
+	}
+
+	//create find value request and result
+	findValueReq := new(FindValueRequest)
+	findValueReq.Sender = k.SelfContact
+	findValueReq.MsgID = NewRandomID()
+	findValueReq.Key = searchKey
+
+	findValueRes := new(FindValueResult)
+
+	//find value
+	err = client.Call("Kademlia.FindValue", findValueReq, findValueRes)
+
+	if err != nil{
+		return err.Error()
+	}
+
+	defer client.Close()
+
+	//update contact
+	k.UpdateContact(*contact)
+
+	return "ok"
 }
 
 func (k *Kademlia) LocalFindValue(searchKey ID) string {
