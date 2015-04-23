@@ -13,6 +13,7 @@ import (
     "strconv"
     "container/list"
     "sync"
+    "encoding/hex"
 )
 
 // const (
@@ -89,7 +90,7 @@ func (k *Kademlia) FindContact(nodeId ID) (*Contact, error) {
     if nodeId == k.SelfContact.NodeID {
         return &k.SelfContact, nil
     }
-    bucket:= k.FindBucketIndex(nodeId)
+    bucket:= k.FindBucket(nodeId)
     res, err := k.FindContactInBucket(nodeId,bucket)
     if err == nil{
     	c := res.Value.(Contact)
@@ -169,14 +170,14 @@ func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 	}
 
 	//update contact
-	var nodes string
+	var res string
 	for _, contact := range findNodeRes.Nodes{
 		k.UpdateContact(contact)
-		nodes = nodes + contact.NodeID.AsString() + " "
+		res = res + contact.NodeID.AsString() + " "
 	}
 
 
-	return "ok" + nodes
+	return "ok, result is: " + res
 }
 
 func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
@@ -206,7 +207,15 @@ func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 	//update contact
 	k.UpdateContact(*contact)
 
-	return "ok"
+	var res string
+	//if value if found return value, else return closest contacts
+	if findValueRes.Value != nil{
+		res = res + hex.EncodeToString(findValueRes.Value[:])
+	} else {
+		res = res + k.ContactsToString(findValueRes.Nodes)
+	}
+
+	return "ok, result is: " + res
 }
 
 func (k *Kademlia) LocalFindValue(searchKey ID) string {
@@ -235,7 +244,7 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 
 func (k *Kademlia) UpdateContact(contact Contact){
 	//Find bucket
-	bucket := k.FindBucketIndex(contact.NodeID)
+	bucket := k.FindBucket(contact.NodeID)
 
     //Find contact, check if conact exist
 	res, err := k.FindContactInBucket(contact.NodeID, bucket)
@@ -273,7 +282,7 @@ func (k *Kademlia) UpdateContact(contact Contact){
 }
 
 
-func (k *Kademlia) FindBucketIndex(nodeid ID) (*list.List){
+func (k *Kademlia) FindBucket(nodeid ID) (*list.List){
 	prefixLength := k.NodeID.Xor(nodeid).PrefixLen();
 	bucket := k.buckets[prefixLength];
 	return bucket
@@ -288,6 +297,23 @@ func (k *Kademlia) FindContactInBucket(nodeId ID, bucket *list.List) (*list.Elem
 		}
 	}
 	return nil, &NotFoundError{nodeId, "Not found"}
+}
+
+func (k *Kademlia) FindClosestContacts(searchKey ID, nodeid ID)([]Contact){
+
+	result := make([]Contact, 0)
+	//bucket := k.FindBucket(searchKey)
+
+	return result
+}
+
+//Convert contacts to string
+func (k *Kademlia) ContactsToString(contacts []Contact) string{
+	var res string
+	for _, contact := range contacts{
+		res = res + "{Sender: " + contact.NodeID.AsString() + ", Host: " + string(contact.Host) + ", Port: " + string(contact.Port) + "},"
+	}
+	return res[:len(res)]
 }
 
 
