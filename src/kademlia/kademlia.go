@@ -149,8 +149,34 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 
 func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	
-	return "ok"
+	client, err := rpc.DialHTTP("tcp", string(contact.Host) + ":" + string(contact.Port))
+	if err != nil{
+		return err.Error()
+	}
+
+	//create find node request and result
+	findNodeRequest := new (FindNodeRequest)
+	findNodeRequest.Sender = k.SelfContact
+	findNodeRequest.MsgID = NewRandomID()
+	findNodeRequest.NodeID = searchKey
+
+	findNodeRes := new(FindNodeResult)
+
+	//find node
+	err = client.Call("Kademlia.FindNode", findNodeRequest, findNodeRes)
+	if err != nil{
+		return err.Error()
+	}
+
+	//update contact
+	var nodes string
+	for _, contact := range findNodeRes.Nodes{
+		k.UpdateContact(contact)
+		nodes = nodes + contact.NodeID.AsString() + " "
+	}
+
+
+	return "ok" + nodes
 }
 
 func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
