@@ -94,7 +94,7 @@ type FindNodeResult struct {
 func (kc *KademliaCore) FindNode(req FindNodeRequest, res *FindNodeResult) error {
 
 	k := (*kc).kademlia
-	res.Nodes = k.FindClosestContacts(req.NodeID, req.Sender.NodeID)
+	res.Nodes = k.FindClosestContacts(req.NodeID)
 	res.MsgID = req.MsgID
 
 	//update contact

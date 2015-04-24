@@ -99,14 +99,14 @@ func (k *Kademlia) FindContact(nodeId ID) (*Contact, error) {
 
 // This is the function to perform the RPC
 func (k *Kademlia) DoPing(host net.IP, port uint16) string {
-	
+
 	var ping PingMessage
 	ping.MsgID = NewRandomID()
 	ping.Sender = k.SelfContact
 
 	var pong PongMessage
 	// client, err := rpc.DialHTTP("tcp", string(host) + ":" + string(port))
-	client, err := rpc.DialHTTP("tcp", host.String() + ":" + strconv.Itoa(int(port)))
+	client, err := rpc.DialHTTP("tcp", host.String()+":"+strconv.Itoa(int(port)))
 	if err != nil {
 		log.Fatal("DialHTTP: ", err)
 	}
@@ -115,6 +115,24 @@ func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 	if err != nil {
 		return "ERR: " + err.Error()
 	}
+
+
+	// client, err := rpc.DialHTTP("tcp", host.String() + ":" + strconv.Itoa(int(port)))
+	// if err != nil {
+	// 	log.Fatal("DialHTTP: ", err)
+	// }
+
+	// ping := new(PingMessage)
+	// ping.MsgID = NewRandomID()
+	// var pong PongMessage
+	// err = client.Call("KademliaCore.Ping", ping, &pong)
+	// if err != nil {
+	// 	log.Fatal("Call: ", err)
+	// }
+	// defer client.Close()
+
+	//k.UpdateContact(pong.Sender)
+
 
 	defer client.Close()
 
@@ -132,11 +150,9 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 
 	storeResult := new(StoreResult)
 
-	// store 
+	// store
 	// rpc.DialHTTP("tcp", host.String() + ":" + strconv.Itoa(int(port)))
-	client, err := rpc.DialHTTP("tcp", contact.Host.String() + ":" + strconv.Itoa(int(contact.Port)))
-
-	
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+strconv.Itoa(int(contact.Port)))
 
 	if err != nil {
 		return err.Error()
@@ -155,8 +171,9 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 
 func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	client, err := rpc.DialHTTP("tcp", contact.Host.String() + ":" + strconv.Itoa(int(contact.Port)))
-	
+
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+strconv.Itoa(int(contact.Port)))
+
 	if err != nil {
 
 		return err.Error()
@@ -188,7 +205,7 @@ func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 
 func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	client, err := rpc.DialHTTP("tcp", contact.Host.String() + ":" + strconv.Itoa(int(contact.Port)))
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+strconv.Itoa(int(contact.Port)))
 	if err != nil {
 		return err.Error()
 	}
@@ -307,9 +324,13 @@ func (k *Kademlia) FindContactInBucket(nodeId ID, bucket *list.List) (*list.Elem
 	return nil, &NotFoundError{nodeId, "Not found"}
 }
 
-func (k *Kademlia) FindClosestContacts(searchKey ID, nodeid ID) []Contact {
+func (k *Kademlia) FindClosestContacts(searchKey ID) []Contact {
 
 	result := make([]Contact, 0)
+	targetBucket := k.FindBucket(searchKey)
+	for i := targetBucket.Front(); i != nil; i = i.Next() {
+		result = append(result, i.Value.(Contact))
+	}
 	//bucket := k.FindBucket(searchKey)
 
 	return result
