@@ -115,23 +115,10 @@ func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 	if err != nil {
 		return "ERR: " + err.Error()
 	}
-	
-	// client, err := rpc.DialHTTP("tcp", host.String() + ":" + strconv.Itoa(int(port)))
-	// if err != nil {
-	// 	log.Fatal("DialHTTP: ", err)
-	// }
 
-	// ping := new(PingMessage)
-	// ping.MsgID = NewRandomID()
-	// var pong PongMessage
-	// err = client.Call("KademliaCore.Ping", ping, &pong)
-	// if err != nil {
-	// 	log.Fatal("Call: ", err)
-	// }
-	// defer client.Close()
+	defer client.Close()
 
-	//k.UpdateContact(pong.Sender)
-
+	// k.UpdateContact(pong.Sender)
 	return "ok"
 }
 

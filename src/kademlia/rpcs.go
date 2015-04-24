@@ -42,7 +42,7 @@ func (kc *KademliaCore) Ping(ping PingMessage, pong *PongMessage) error {
 	pong.Sender = kc.kademlia.SelfContact
 	fmt.Println("Received ping!")
 	// Update contact, etc
-	kc.kademlia.UpdateContact(ping.Sender)
+	// kc.kademlia.UpdateContact(ping.Sender)
 
 	return nil
 }
