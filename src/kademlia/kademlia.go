@@ -104,7 +104,7 @@ func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 	ping.Sender = k.SelfContact
 
 	pong := new(PongMessage)
-	client, err := rpc.DialHTTP("tcp", string(host)+":"+string(port))
+	client, err := rpc.DialHTTP("tcp", host.String()+":"+Atoi(port))
 	err = client.Call("KademliaCore.Ping", ping, pong)
 
 	if err != nil {
@@ -129,7 +129,7 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 	storeResult := new(StoreResult)
 
 	// store
-	client, err := rpc.DialHTTP("tcp", string(contact.Host)+":"+string(contact.Port))
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+Atoi(contact.Port))
 
 	if err != nil {
 		return err.Error()
@@ -148,7 +148,7 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 
 func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	client, err := rpc.DialHTTP("tcp", string(contact.Host)+":"+string(contact.Port))
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+Atoi(contact.Port))
 	if err != nil {
 		return err.Error()
 	}
@@ -179,7 +179,7 @@ func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 
 func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	client, err := rpc.DialHTTP("tcp", string(contact.Host)+":"+string(contact.Port))
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+Atoi(contact.Port))
 	if err != nil {
 		return err.Error()
 	}
@@ -310,7 +310,7 @@ func (k *Kademlia) FindClosestContacts(searchKey ID, nodeid ID) []Contact {
 func (k *Kademlia) ContactsToString(contacts []Contact) string {
 	var res string
 	for _, contact := range contacts {
-		res = res + "{Sender: " + contact.NodeID.AsString() + ", Host: " + string(contact.Host) + ", Port: " + string(contact.Port) + "},"
+		res = res + "{Sender: " + contact.NodeID.AsString() + ", Host: " + contact.Host.String() + ", Port: " + Atoi(contact.Port) + "},"
 	}
 	return res[:len(res)]
 }
