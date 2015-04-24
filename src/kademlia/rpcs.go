@@ -7,6 +7,7 @@ package kademlia
 import (
 	"net"
 	"errors"
+	"fmt"
 )
 
 type KademliaCore struct {
@@ -38,10 +39,10 @@ func (kc *KademliaCore) Ping(ping PingMessage, pong *PongMessage) error {
 	pong.MsgID = CopyID(ping.MsgID)
 
     // Specify the sender
-    pong.Sender = ((*kc).kademlia).SelfContact
-
+    pong.Sender = kc.kademlia.SelfContact
+    fmt.Println("Received ping!")
 	// Update contact, etc
-	((*kc).kademlia).UpdateContact(ping.Sender)
+	kc.kademlia.UpdateContact(ping.Sender)
 
 	return nil
 }
