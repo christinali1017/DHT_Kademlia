@@ -5,15 +5,15 @@ package kademlia
 //Git Test
 
 import (
+	"container/list"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/rpc"
-    "strconv"
-    "container/list"
-    "sync"
-    "encoding/hex"
+	"strconv"
+	"sync"
 )
 
 // const (
@@ -22,28 +22,26 @@ import (
 // 	k     = 20
 // )
 const (
-	numberofbuckets  = 8 * IDBytes
-	maxbucketsize    = 20
-	alpha = 3
+	numberofbuckets = 8 * IDBytes
+	maxbucketsize   = 20
+	alpha           = 3
 )
-
 
 // Kademlia type. You can put whatever state you need in this.
 type Kademlia struct {
-	NodeID ID
-    SelfContact Contact
-    buckets [IDBytes * 8]*list.List
-    storeMutex sync.Mutex
-    storeMap map[ID][]byte
+	NodeID      ID
+	SelfContact Contact
+	buckets     [IDBytes * 8]*list.List
+	storeMutex  sync.Mutex
+	storeMap    map[ID][]byte
 }
-
 
 func NewKademlia(laddr string) *Kademlia {
 	// TODO: Initialize other state here as you add functionality.
 	k := new(Kademlia)
 	k.NodeID = NewRandomID()
-	for i := 0; i < len(k.buckets); i++{
-		k.buckets[i] = list.New();
+	for i := 0; i < len(k.buckets); i++ {
+		k.buckets[i] = list.New()
 	}
 
 	// make message map
@@ -61,18 +59,18 @@ func NewKademlia(laddr string) *Kademlia {
 	// Run RPC server forever.
 	go http.Serve(l, nil)
 
-    // Add self contact
-    hostname, port, _ := net.SplitHostPort(l.Addr().String())
-    port_int, _ := strconv.Atoi(port)
-    ipAddrStrings, err := net.LookupHost(hostname)
-    var host net.IP
-    for i := 0; i < len(ipAddrStrings); i++ {
-        host = net.ParseIP(ipAddrStrings[i])
-        if host.To4() != nil {
-            break
-        }
-    }
-    k.SelfContact = Contact{k.NodeID, host, uint16(port_int)}
+	// Add self contact
+	hostname, port, _ := net.SplitHostPort(l.Addr().String())
+	port_int, _ := strconv.Atoi(port)
+	ipAddrStrings, err := net.LookupHost(hostname)
+	var host net.IP
+	for i := 0; i < len(ipAddrStrings); i++ {
+		host = net.ParseIP(ipAddrStrings[i])
+		if host.To4() != nil {
+			break
+		}
+	}
+	k.SelfContact = Contact{k.NodeID, host, uint16(port_int)}
 	return k
 }
 
@@ -87,15 +85,15 @@ func (e *NotFoundError) Error() string {
 
 func (k *Kademlia) FindContact(nodeId ID) (*Contact, error) {
 	// Find contact with provided ID
-    if nodeId == k.SelfContact.NodeID {
-        return &k.SelfContact, nil
-    }
-    bucket:= k.FindBucket(nodeId)
-    res, err := k.FindContactInBucket(nodeId,bucket)
-    if err == nil{
-    	c := res.Value.(Contact)
-    	return &c,nil 
-    }
+	if nodeId == k.SelfContact.NodeID {
+		return &k.SelfContact, nil
+	}
+	bucket := k.FindBucket(nodeId)
+	res, err := k.FindContactInBucket(nodeId, bucket)
+	if err == nil {
+		c := res.Value.(Contact)
+		return &c, nil
+	}
 	return nil, &NotFoundError{nodeId, "Not found"}
 }
 
@@ -106,10 +104,10 @@ func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 	ping.Sender = k.SelfContact
 
 	pong := new(PongMessage)
-	client, err := rpc.DialHTTP("tcp", string(host) + ":" + string(port))
+	client, err := rpc.DialHTTP("tcp", string(host)+":"+string(port))
 	err = client.Call("KademliaCore.Ping", ping, pong)
 
-	if err != nil{
+	if err != nil {
 		return "ERR: " + err.Error()
 	}
 
@@ -130,8 +128,8 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 
 	storeResult := new(StoreResult)
 
-	// store 
-	client, err := rpc.DialHTTP("tcp", string(contact.Host) + ":" + string(contact.Port))
+	// store
+	client, err := rpc.DialHTTP("tcp", string(contact.Host)+":"+string(contact.Port))
 
 	if err != nil {
 		return err.Error()
@@ -140,7 +138,7 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 	err = client.Call("KademliaCore.Store", storeRequest, storeResult)
 
 	//check error
-	if err != nil{
+	if err != nil {
 		return err.Error()
 	}
 	k.UpdateContact(*contact)
@@ -150,13 +148,13 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 
 func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	client, err := rpc.DialHTTP("tcp", string(contact.Host) + ":" + string(contact.Port))
-	if err != nil{
+	client, err := rpc.DialHTTP("tcp", string(contact.Host)+":"+string(contact.Port))
+	if err != nil {
 		return err.Error()
 	}
 
 	//create find node request and result
-	findNodeRequest := new (FindNodeRequest)
+	findNodeRequest := new(FindNodeRequest)
 	findNodeRequest.Sender = k.SelfContact
 	findNodeRequest.MsgID = NewRandomID()
 	findNodeRequest.NodeID = searchKey
@@ -165,25 +163,24 @@ func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 
 	//find node
 	err = client.Call("Kademlia.FindNode", findNodeRequest, findNodeRes)
-	if err != nil{
+	if err != nil {
 		return err.Error()
 	}
 
 	//update contact
 	var res string
-	for _, contact := range findNodeRes.Nodes{
+	for _, contact := range findNodeRes.Nodes {
 		k.UpdateContact(contact)
 		res = res + contact.NodeID.AsString() + " "
 	}
-
 
 	return "ok, result is: " + res
 }
 
 func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	client, err := rpc.DialHTTP("tcp", string(contact.Host) + ":" + string(contact.Port))
-	if err != nil{
+	client, err := rpc.DialHTTP("tcp", string(contact.Host)+":"+string(contact.Port))
+	if err != nil {
 		return err.Error()
 	}
 
@@ -198,7 +195,7 @@ func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 	//find value
 	err = client.Call("Kademlia.FindValue", findValueReq, findValueRes)
 
-	if err != nil{
+	if err != nil {
 		return err.Error()
 	}
 
@@ -209,7 +206,7 @@ func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 
 	var res string
 	//if value if found return value, else return closest contacts
-	if findValueRes.Value != nil{
+	if findValueRes.Value != nil {
 		res = res + hex.EncodeToString(findValueRes.Value[:])
 	} else {
 		res = res + k.ContactsToString(findValueRes.Nodes)
@@ -220,8 +217,13 @@ func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 
 func (k *Kademlia) LocalFindValue(searchKey ID) string {
 	// TODO: Implement
+	value, ok := k.storeMap[searchKey]
+	if ok {
+		return "OK:" + value
+	} else {
+		return "ERR: Not implemented"
+	}
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	return "ERR: Not implemented"
 }
 
 func (k *Kademlia) DoIterativeFindNode(id ID) string {
@@ -237,41 +239,40 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 	return "ERR: Not implemented"
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////
 // methods for bucket
 ///////////////////////////////////////////////////////////////////////////////
 
-func (k *Kademlia) UpdateContact(contact Contact){
+func (k *Kademlia) UpdateContact(contact Contact) {
 	//Find bucket
 	bucket := k.FindBucket(contact.NodeID)
 
-    //Find contact, check if conact exist
+	//Find contact, check if conact exist
 	res, err := k.FindContactInBucket(contact.NodeID, bucket)
 
 	//if contact has already existed, then move contact to the end of bucket
-	if err == nil{
+	if err == nil {
 		bucket.MoveToBack(res)
-	//if contact is not found
-	}else{
+		//if contact is not found
+	} else {
 		//check if bucket is full, if not, add contact to the end of bucket
 		if bucket.Len() < maxbucketsize {
 			bucket.PushBack(contact)
 
-		//if bucket id full, ping the least recently contact node.
-		}else{
+			//if bucket id full, ping the least recently contact node.
+		} else {
 			front := bucket.Front()
-			lrc_node := front.Value.(Contact) 
+			lrc_node := front.Value.(Contact)
 			pingresult := k.DoPing(lrc_node.Host, lrc_node.Port)
 
-			/*if least recent contact respond, ignore the new contact and move the least recent contact to 
+			/*if least recent contact respond, ignore the new contact and move the least recent contact to
 			  the end of the bucket
 			*/
-			if pingresult == "ok"{
+			if pingresult == "ok" {
 				bucket.MoveToBack(front)
 
-			// if it does not respond, delete it and add the new contact to the end of the bucket
-			}else{
+				// if it does not respond, delete it and add the new contact to the end of the bucket
+			} else {
 				bucket.Remove(front)
 				bucket.PushBack(contact)
 			}
@@ -281,25 +282,23 @@ func (k *Kademlia) UpdateContact(contact Contact){
 	}
 }
 
-
-func (k *Kademlia) FindBucket(nodeid ID) (*list.List){
-	prefixLength := k.NodeID.Xor(nodeid).PrefixLen();
-	bucket := k.buckets[prefixLength];
+func (k *Kademlia) FindBucket(nodeid ID) *list.List {
+	prefixLength := k.NodeID.Xor(nodeid).PrefixLen()
+	bucket := k.buckets[prefixLength]
 	return bucket
 }
 
-
-func (k *Kademlia) FindContactInBucket(nodeId ID, bucket *list.List) (*list.Element, error){
-	for i := bucket.Front(); i != nil; i = i.Next(){
+func (k *Kademlia) FindContactInBucket(nodeId ID, bucket *list.List) (*list.Element, error) {
+	for i := bucket.Front(); i != nil; i = i.Next() {
 		c := i.Value.(Contact)
-		if c.NodeID.Equals(nodeId){
-			return i,nil;
+		if c.NodeID.Equals(nodeId) {
+			return i, nil
 		}
 	}
 	return nil, &NotFoundError{nodeId, "Not found"}
 }
 
-func (k *Kademlia) FindClosestContacts(searchKey ID, nodeid ID)([]Contact){
+func (k *Kademlia) FindClosestContacts(searchKey ID, nodeid ID) []Contact {
 
 	result := make([]Contact, 0)
 	//bucket := k.FindBucket(searchKey)
@@ -308,23 +307,16 @@ func (k *Kademlia) FindClosestContacts(searchKey ID, nodeid ID)([]Contact){
 }
 
 //Convert contacts to string
-func (k *Kademlia) ContactsToString(contacts []Contact) string{
+func (k *Kademlia) ContactsToString(contacts []Contact) string {
 	var res string
-	for _, contact := range contacts{
+	for _, contact := range contacts {
 		res = res + "{Sender: " + contact.NodeID.AsString() + ", Host: " + string(contact.Host) + ", Port: " + string(contact.Port) + "},"
 	}
 	return res[:len(res)]
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////
 // questions
 ///////////////////////////////////////////////////////////////////////////////
 
-// 1. When store, if the key has already exist, should we replace the original value? 
-
-
-
-
-
-
+// 1. When store, if the key has already exist, should we replace the original value?
