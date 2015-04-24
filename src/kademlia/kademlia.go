@@ -99,9 +99,18 @@ func (k *Kademlia) FindContact(nodeId ID) (*Contact, error) {
 
 // This is the function to perform the RPC
 func (k *Kademlia) DoPing(host net.IP, port uint16) string {
-	ping := new(PingMessage)
+	
+	var ping PingMessage
 	ping.MsgID = NewRandomID()
 	ping.Sender = k.SelfContact
+
+	var pong PongMessage
+	// client, err := rpc.DialHTTP("tcp", string(host) + ":" + string(port))
+	client, err := rpc.DialHTTP("tcp", host.String() + ":" + strconv.Itoa(int(port)))
+	if err != nil {
+		log.Fatal("DialHTTP: ", err)
+	}
+	err = client.Call("KademliaCore.Ping", ping, &pong)
 
 	pong := new(PongMessage)
 	client, err := rpc.DialHTTP("tcp", host.String()+":"+Atoi(port))
@@ -110,10 +119,22 @@ func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 	if err != nil {
 		return "ERR: " + err.Error()
 	}
+	
+	// client, err := rpc.DialHTTP("tcp", host.String() + ":" + strconv.Itoa(int(port)))
+	// if err != nil {
+	// 	log.Fatal("DialHTTP: ", err)
+	// }
 
-	defer client.Close()
+	// ping := new(PingMessage)
+	// ping.MsgID = NewRandomID()
+	// var pong PongMessage
+	// err = client.Call("KademliaCore.Ping", ping, &pong)
+	// if err != nil {
+	// 	log.Fatal("Call: ", err)
+	// }
+	// defer client.Close()
 
-	k.UpdateContact(pong.Sender)
+	//k.UpdateContact(pong.Sender)
 
 	return "ok"
 }
@@ -128,8 +149,14 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 
 	storeResult := new(StoreResult)
 
+
+	// store 
+	// rpc.DialHTTP("tcp", host.String() + ":" + strconv.Itoa(int(port)))
+	client, err := rpc.DialHTTP("tcp", contact.Host.String() + ":" + strconv.Itoa(int(contact.Port)))
+
 	// store
 	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+Atoi(contact.Port))
+
 
 	if err != nil {
 		return err.Error()
@@ -149,7 +176,13 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
 	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+Atoi(contact.Port))
+
+	client, err := rpc.DialHTTP("tcp", contact.Host.String() + ":" + strconv.Itoa(int(contact.Port)))
+	if err != nil{
+
+	client, err := rpc.DialHTTP("tcp", string(contact.Host)+":"+string(contact.Port))
 	if err != nil {
+
 		return err.Error()
 	}
 
