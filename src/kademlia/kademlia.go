@@ -154,9 +154,7 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 	// rpc.DialHTTP("tcp", host.String() + ":" + strconv.Itoa(int(port)))
 	client, err := rpc.DialHTTP("tcp", contact.Host.String() + ":" + strconv.Itoa(int(contact.Port)))
 
-	// store
-	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+Atoi(contact.Port))
-
+	
 
 	if err != nil {
 		return err.Error()
@@ -175,12 +173,9 @@ func (k *Kademlia) DoStore(contact *Contact, key ID, value []byte) string {
 
 func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+Atoi(contact.Port))
 
 	client, err := rpc.DialHTTP("tcp", contact.Host.String() + ":" + strconv.Itoa(int(contact.Port)))
-	if err != nil{
-
-	client, err := rpc.DialHTTP("tcp", string(contact.Host)+":"+string(contact.Port))
+	
 	if err != nil {
 
 		return err.Error()
@@ -212,7 +207,7 @@ func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 
 func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 	// If all goes well, return "OK: <output>", otherwise print "ERR: <messsage>"
-	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+Atoi(contact.Port))
+	client, err := rpc.DialHTTP("tcp", contact.Host.String() + ":" + strconv.Itoa(int(contact.Port)))
 	if err != nil {
 		return err.Error()
 	}
