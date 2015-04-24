@@ -219,7 +219,7 @@ func (k *Kademlia) LocalFindValue(searchKey ID) string {
 	// TODO: Implement
 	value, ok := k.storeMap[searchKey]
 	if ok {
-		return "OK:" + value
+		return "OK:" + hex.EncodeToString(value[:])
 	} else {
 		return "ERR: Not implemented"
 	}
