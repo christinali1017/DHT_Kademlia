@@ -300,6 +300,8 @@ func (k *Kademlia) UpdateContact(contact Contact) {
 
 func (k *Kademlia) FindBucket(nodeid ID) *list.List {
 	prefixLength := k.NodeID.Xor(nodeid).PrefixLen()
+
+	//if ping yourself, then the distance would be 160, and it will ran out of index
 	if prefixLength >= numberofbuckets{
 		return nil
 	}
