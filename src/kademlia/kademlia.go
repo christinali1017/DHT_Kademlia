@@ -89,6 +89,9 @@ func (k *Kademlia) FindContact(nodeId ID) (*Contact, error) {
 		return &k.SelfContact, nil
 	}
 	bucket := k.FindBucket(nodeId)
+	if bucket == nil {
+		return nil, &NotFoundError{nodeId, "Not found"}
+	}
 	res, err := k.FindContactInBucket(nodeId, bucket)
 	if err == nil {
 		c := res.Value.(Contact)
@@ -116,27 +119,9 @@ func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 		return "ERR: " + err.Error()
 	}
 
-
-	// client, err := rpc.DialHTTP("tcp", host.String() + ":" + strconv.Itoa(int(port)))
-	// if err != nil {
-	// 	log.Fatal("DialHTTP: ", err)
-	// }
-
-	// ping := new(PingMessage)
-	// ping.MsgID = NewRandomID()
-	// var pong PongMessage
-	// err = client.Call("KademliaCore.Ping", ping, &pong)
-	// if err != nil {
-	// 	log.Fatal("Call: ", err)
-	// }
-	// defer client.Close()
-
-	//k.UpdateContact(pong.Sender)
-
-
 	defer client.Close()
+    k.UpdateContact(pong.Sender)
 
-	// k.UpdateContact(pong.Sender)
 	return "ok"
 }
 
@@ -271,8 +256,11 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 
 func (k *Kademlia) UpdateContact(contact Contact) {
 	//Find bucket
+	fmt.Println("Begin update")
 	bucket := k.FindBucket(contact.NodeID)
-
+	if bucket == nil {
+		return 
+	}
 	//Find contact, check if conact exist
 	res, err := k.FindContactInBucket(contact.NodeID, bucket)
 
@@ -306,10 +294,15 @@ func (k *Kademlia) UpdateContact(contact Contact) {
 		}
 
 	}
+	fmt.Println("Update contact succeed, nodeid is : " + contact.NodeID.AsString())
+
 }
 
 func (k *Kademlia) FindBucket(nodeid ID) *list.List {
 	prefixLength := k.NodeID.Xor(nodeid).PrefixLen()
+	if prefixLength >= numberofbuckets{
+		return nil
+	}
 	bucket := k.buckets[prefixLength]
 	return bucket
 }
@@ -328,6 +321,9 @@ func (k *Kademlia) FindClosestContacts(searchKey ID) []Contact {
 
 	result := make([]Contact, 0)
 	targetBucket := k.FindBucket(searchKey)
+	if targetBucket == nil {
+		return nil
+	}
 	for i := targetBucket.Front(); i != nil; i = i.Next() {
 		result = append(result, i.Value.(Contact))
 	}
