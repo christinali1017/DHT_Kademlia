@@ -47,6 +47,7 @@ func main() {
 
 	ping := new(kademlia.PingMessage)
 	ping.MsgID = kademlia.NewRandomID()
+	// ping.Sender = kademlia.SelfContact
 	var pong kademlia.PongMessage
 	err = client.Call("KademliaCore.Ping", ping, &pong)
 	if err != nil {

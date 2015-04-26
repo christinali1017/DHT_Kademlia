@@ -14,6 +14,8 @@ import (
 	"net/rpc"
 	"strconv"
 	"sync"
+	"strings"
+	// "os"
 )
 
 // const (
@@ -52,12 +54,24 @@ func NewKademlia(laddr string) *Kademlia {
 	// the RPC functions.
 	rpc.Register(&KademliaCore{k})
 	rpc.HandleHTTP()
+
+	//GET THE PORT
+	index := strings.Index(laddr, ":")
+	port := laddr[index:]
+
 	l, err := net.Listen("tcp", laddr)
 	if err != nil {
 		log.Fatal("Listen: ", err)
 	}
 	// Run RPC server forever.
 	go http.Serve(l, nil)
+	fmt.Println("laddr is : " + laddr)
+
+	// GET OS HOST
+	// name, err := os.Hostname()
+	// addrs, err := net.LookupHost(name)
+
+	// fmt.Println("address is : " + addrs[0])
 
 	// Add self contact
 	hostname, port, _ := net.SplitHostPort(l.Addr().String())
@@ -70,6 +84,7 @@ func NewKademlia(laddr string) *Kademlia {
 			break
 		}
 	}
+	fmt.Println("new : " + host.String())
 	k.SelfContact = Contact{k.NodeID, host, uint16(port_int)}
 	return k
 }
@@ -106,6 +121,8 @@ func (k *Kademlia) DoPing(host net.IP, port uint16) string {
 	var ping PingMessage
 	ping.MsgID = NewRandomID()
 	ping.Sender = k.SelfContact
+
+	fmt.Println("***IN DO ping: " + k.SelfContact.Host.String())
 
 	var pong PongMessage
 	// client, err := rpc.DialHTTP("tcp", string(host) + ":" + string(port))
@@ -173,18 +190,19 @@ func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 	findNodeRes := new(FindNodeResult)
 
 	//find node
-	err = client.Call("Kademlia.FindNode", findNodeRequest, findNodeRes)
+	err = client.Call("KademliaCore.FindNode", findNodeRequest, findNodeRes)
 	if err != nil {
 		return err.Error()
 	}
 
 	//update contact
 	var res string
-	for _, contact := range findNodeRes.Nodes {
-		k.UpdateContact(contact)
-		res = res + contact.NodeID.AsString() + " "
-	}
+	// for _, contact := range findNodeRes.Nodes {
+	// 	k.UpdateContact(contact)
+	// 	res = res + contact.NodeID.AsString() + " "
+	// }
 
+	res = k.ContactsToString(findNodeRes.Nodes)
 	return "ok, result is: " + res
 }
 
@@ -204,7 +222,7 @@ func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 	findValueRes := new(FindValueResult)
 
 	//find value
-	err = client.Call("Kademlia.FindValue", findValueReq, findValueRes)
+	err = client.Call("KademliaCore.FindValue", findValueReq, findValueRes)
 
 	if err != nil {
 		return err.Error()
@@ -257,6 +275,8 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 func (k *Kademlia) UpdateContact(contact Contact) {
 	//Find bucket
 	fmt.Println("Begin update")
+
+	fmt.Println("*********" + contact.Host.String())
 	bucket := k.FindBucket(contact.NodeID)
 	if bucket == nil {
 		return 
@@ -300,6 +320,8 @@ func (k *Kademlia) UpdateContact(contact Contact) {
 
 func (k *Kademlia) FindBucket(nodeid ID) *list.List {
 	prefixLength := k.NodeID.Xor(nodeid).PrefixLen()
+	fmt.Println("find bucket index: ")
+	fmt.Println(prefixLength)
 
 	//if ping yourself, then the distance would be 160, and it will ran out of index
 	if prefixLength >= numberofbuckets{
@@ -324,6 +346,7 @@ func (k *Kademlia) FindClosestContacts(searchKey ID) []Contact {
 	result := make([]Contact, 0)
 	targetBucket := k.FindBucket(searchKey)
 	if targetBucket == nil {
+		fmt.Println("bucket is nil")
 		return nil
 	}
 	for i := targetBucket.Front(); i != nil; i = i.Next() {
