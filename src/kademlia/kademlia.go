@@ -325,8 +325,8 @@ func (k *Kademlia) FindBucket(nodeid ID) *list.List {
 	fmt.Println(bucketIndex)
 
 	//if ping yourself, then the distance would be 160, and it will ran out of index
-	if(bucketIndex > (IDBytes * 8 - 1){
-		bucketIndex = IDBytes * 8 - 1
+	if bucketIndex > (IDBytes * 8 - 1){
+		bucketIndex = (IDBytes * 8 - 1)
 	}
 	
 	bucket := k.buckets[bucketIndex]
