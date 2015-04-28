@@ -59,7 +59,7 @@ func (id ID) PrefixLen() int {
             }
         }
     }
-    return IDBytes * 8 - 1 
+    return IDBytes * 8 
 }
 
 // Generate a new ID from nothing.
