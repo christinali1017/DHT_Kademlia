@@ -278,7 +278,7 @@ func (k *Kademlia) UpdateContact(contact Contact) {
 	//Find bucket
 	fmt.Println("Begin update")
 
-	fmt.Println("*********" + contact.Host.String())
+	// fmt.Println("*********" + contact.Host.String())
 	bucket := k.FindBucket(contact.NodeID)
 	if bucket == nil {
 		return 
@@ -323,10 +323,10 @@ func (k *Kademlia) UpdateContact(contact Contact) {
 func (k *Kademlia) FindBucket(nodeid ID) *list.List {
 	prefixLength := k.NodeID.Xor(nodeid).PrefixLen()
 	bucketIndex := (IDBytes * 8) - prefixLength 
-	fmt.Println("find PrefixLen: ")
-	fmt.Println(prefixLength)
-	fmt.Println("find bucket index: ")
-	fmt.Println(bucketIndex)
+	// fmt.Println("find PrefixLen: ")
+	// fmt.Println(prefixLength)
+	// fmt.Println("find bucket index: ")
+	// fmt.Println(bucketIndex)
 
 	//if ping yourself, then the distance would be 160, and it will ran out of index
 	if bucketIndex > (IDBytes * 8 - 1){
