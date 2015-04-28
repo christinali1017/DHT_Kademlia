@@ -14,7 +14,7 @@ import (
 	"net/rpc"
 	"strconv"
 	"sync"
-	"strings"
+	// "strings"
 	// "os"
 )
 
@@ -56,8 +56,8 @@ func NewKademlia(laddr string) *Kademlia {
 	rpc.HandleHTTP()
 
 	//GET THE PORT
-	index := strings.Index(laddr, ":")
-	port := laddr[index:]
+	// index := strings.Index(laddr, ":")
+	// port := laddr[index:]
 
 	l, err := net.Listen("tcp", laddr)
 	if err != nil {
@@ -85,7 +85,9 @@ func NewKademlia(laddr string) *Kademlia {
 		}
 	}
 	fmt.Println("new : " + host.String())
+	// k.SelfContact = Contact{k.NodeID, net.ParseIP(addrs[0]), uint16(port_int)}
 	k.SelfContact = Contact{k.NodeID, host, uint16(port_int)}
+
 	return k
 }
 
