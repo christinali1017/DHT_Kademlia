@@ -43,7 +43,6 @@ func (kc *KademliaCore) Ping(ping PingMessage, pong *PongMessage) error {
 	fmt.Println("***IN  ping, sender: " + ping.Sender.Host.String())
 	fmt.Println("***IN  ping, self: " + pong.Sender.Host.String())
 
-
 	fmt.Println("Received ping!")
 	// Update contact, etc
 	kc.kademlia.UpdateContact(ping.Sender)
@@ -102,7 +101,7 @@ type FindNodeResult struct {
 func (kc *KademliaCore) FindNode(req FindNodeRequest, res *FindNodeResult) error {
 
 	k := (*kc).kademlia
-	res.Nodes = k.FindClosestContacts(req.NodeID)
+	res.Nodes = k.FindClosestContacts(req.NodeID, req.Sender.NodeID)
 	res.MsgID = req.MsgID
 
 	//update contact
@@ -132,7 +131,9 @@ func (kc *KademliaCore) FindValue(req FindValueRequest, res *FindValueResult) er
 	k := (*kc).kademlia
 
 	// test if key exists in map, if exists, ok = true
+	k.storeMutex.RLock()
 	value, ok := k.storeMap[req.Key]
+	k.storeMutex.RUnlock()
 
 	//if key exists
 	if ok {
