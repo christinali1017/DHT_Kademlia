@@ -272,8 +272,15 @@ func (k *Kademlia) LocalFindValue(searchKey ID) string {
 
 func (k *Kademlia) DoIterativeFindNode(id ID) string {
 	// For project 2!
+
+	shortlist := list.New()
+
+	
+
 	return "ERR: Not implemented"
 }
+
+
 func (k *Kademlia) DoIterativeStore(key ID, value []byte) string {
 	// For project 2!
 	return "ERR: Not implemented"
@@ -521,8 +528,10 @@ func (k *Kademlia) PingWithOutUpdate(host net.IP, port uint16) string {
 	return "ok"
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// questions
-///////////////////////////////////////////////////////////////////////////////
 
-// 1. When store, if the key has already exist, should we replace the original value?
+func (k *Kademlia) compareDistance(c1 Contact, c2 Contact, id ID) int {
+	distance1 := c1.NodeID.Xor(id)
+	distance2 := c2.NodeID.Xor(id)
+	return distance1.Compare(distance2)
+}
+
