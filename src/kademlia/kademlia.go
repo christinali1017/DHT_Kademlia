@@ -20,14 +20,15 @@ import (
 )
 
 // const (
-// 	alpha = 3
+// 	ALPHA = 3
 // 	b     = 8 * IDBytes
 // 	k     = 20
 // )
 const (
-	numberofbuckets = 8 * IDBytes
-	maxbucketsize   = 20
-	alpha           = 3
+	TOTAL_BUCKETS = 8 * IDBytes
+	MAX_BUCKET_SIZE   = 20
+	ALPHA           = 3
+	TIME_INTERVAL = 0.3 * time.Second
 )
 
 // Kademlia type. You can put whatever state you need in this.
@@ -205,10 +206,9 @@ func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 
 	//update contact
 	var res string
-	// for _, contact := range findNodeRes.Nodes {
-	// 	k.UpdateContact(contact)
-	// 	res = res + contact.NodeID.AsString() + " "
-	// }
+	for _, contact := range findNodeRes.Nodes {
+		k.UpdateContact(contact)
+	}
 
 	res = k.ContactsToString(findNodeRes.Nodes)
 	if res == "" {
@@ -275,18 +275,14 @@ func (k *Kademlia) DoIterativeFindNode(id ID) string {
 
 	shortlist := list.New()
 	markedMap := make(map[ID]bool)
-	initalizeContacts := k.closestContacts(id, k.NodeID, alpha)
+	initalizeContacts := k.closestContacts(id, k.NodeID, ALPHA)
 	// fmt.Println(k.ContactsToString(initalizeContacts))
 
 	for {
-		searchNodes := getUnmarkedNodes(markedMap, shortlist, alpha)
-		
+		searchNodes := getUnmarkedNodes(markedMap, shortlist, ALPHA)
+
 	}
-
-
-
-
-
+	
 	return "ERR: Not implemented"
 }
 
@@ -328,7 +324,10 @@ func (k *Kademlia) UpdateContact(contact Contact) {
 		//if contact is not found
 	} else {
 		//check if bucket is full, if not, add contact to the end of bucket
-		if bucket.Len() < maxbucketsize {
+		k.storeMutex.RLock()
+		bucketLen := bucket.Len()
+		k.storeMutex.RUnlock()
+		if bucketLen < MAX_BUCKET_SIZE {
 			k.storeMutex.Lock()
 			bucket.PushBack(contact)
 			k.storeMutex.Unlock()
@@ -414,7 +413,7 @@ func (k *Kademlia) FindContactInBucket(nodeId ID, bucket *list.List) (*list.Elem
 // 			if !i.Value.(Contact).NodeID.Equals(senderKey){
 // 			result = append(result, i.Value.(Contact))
 // 			count++
-// 			if count == maxbucketsize {
+// 			if count == MAX_BUCKET_SIZE {
 // 				return result
 // 				}
 // 			}
@@ -430,7 +429,7 @@ func (k *Kademlia) FindContactInBucket(nodeId ID, bucket *list.List) (*list.Elem
 // 			if !i.Value.(Contact).NodeID.Equals(senderKey){
 // 			result = append(result, i.Value.(Contact))
 // 			count++
-// 			if count == maxbucketsize {
+// 			if count == MAX_BUCKET_SIZE {
 // 				return result
 // 				}
 // 			}
@@ -492,11 +491,11 @@ func (k *Kademlia) FindClosestContactsBySort(contactDistanceList []ContactDistan
 		return nil
 	}
 
-	if len(result) <= maxbucketsize {
+	if len(result) <= MAX_BUCKET_SIZE {
 		return result
 	}
 
-	result = result[0:maxbucketsize]
+	result = result[0:MAX_BUCKET_SIZE]
 
 	return result
 
