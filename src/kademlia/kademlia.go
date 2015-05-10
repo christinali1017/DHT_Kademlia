@@ -12,10 +12,10 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
-	"sort"
 	// "os"
 )
 
@@ -25,10 +25,10 @@ import (
 // 	k     = 20
 // )
 const (
-	TOTAL_BUCKETS = 8 * IDBytes
-	MAX_BUCKET_SIZE   = 20
+	TOTAL_BUCKETS   = 8 * IDBytes
+	MAX_BUCKET_SIZE = 20
 	ALPHA           = 3
-	TIME_INTERVAL = 0.3 * time.Second
+	TIME_INTERVAL   = 0.3 * time.Second
 )
 
 // Kademlia type. You can put whatever state you need in this.
@@ -40,12 +40,27 @@ type Kademlia struct {
 	storeMap    map[ID][]byte
 }
 
-type ContactDistance struct{
+type ContactDistance struct {
 	SelfContact Contact
-	Distance ID
+	Distance    ID
 }
 
 type ByDistance []ContactDistance
+
+type Stopper struct {
+	stopMutex sync.RWMutex
+	stopType  int
+	//0: No Stop
+	//1: Have accumulate k active
+	//2: No improve in shortlist
+	//3: Found value
+
+}
+
+type Valuer struct {
+	value  []byte
+	NodeID ID
+}
 
 func NewKademlia(laddr string) *Kademlia {
 	// TODO: Initialize other state here as you add functionality.
@@ -205,15 +220,18 @@ func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 	}
 
 	//update contact
+	k.UpdateContact(*contact)
 	var res string
-	for _, contact := range findNodeRes.Nodes {
-		k.UpdateContact(contact)
+	if findNodeRes.Nodes != nil {
+		for _, contactItem := range findNodeRes.Nodes {
+			k.UpdateContact(contactItem)
+		}
 	}
 
 	res = k.ContactsToString(findNodeRes.Nodes)
 	if res == "" {
 		return "No Record"
-	} 
+	}
 	return "ok, result is: " + res
 }
 
@@ -243,6 +261,11 @@ func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 
 	//update contact
 	k.UpdateContact(*contact)
+	if findValueRes.Nodes != nil {
+		for _, contactItem := range findValueRes.Nodes {
+			k.UpdateContact(contactItem)
+		}
+	}
 
 	var res string
 	//if value if found return value, else return closest contacts
@@ -253,7 +276,7 @@ func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 	}
 	if res == "" {
 		return "No Record"
-	} 
+	}
 	return "ok, result is: " + res
 }
 
@@ -273,31 +296,169 @@ func (k *Kademlia) LocalFindValue(searchKey ID) string {
 func (k *Kademlia) DoIterativeFindNode(id ID) string {
 	// For project 2!
 
-	shortlist := list.New()
-	markedMap := make(map[ID]bool)
-	initalizeContacts := k.closestContacts(id, k.NodeID, ALPHA)
-	// fmt.Println(k.ContactsToString(initalizeContacts))
+	// shortlist := list.New()
+	// markedMap := make(map[ID]bool)
+	// initalizeContacts := k.closestContacts(id, k.NodeID, ALPHA)
+	// // fmt.Println(k.ContactsToString(initalizeContacts))
 
-	for {
-		searchNodes := getUnmarkedNodes(markedMap, shortlist, ALPHA)
+	// for {
+	// 	searchNodes := getUnmarkedNodes(markedMap, shortlist, ALPHA)
 
-	}
-	
+	// }
+
 	return "ERR: Not implemented"
 }
 
+func (k *Kademlia) IterativeFindNode(id ID) []Contact {
+}
 
 func (k *Kademlia) DoIterativeStore(key ID, value []byte) string {
 	// For project 2!
-	return "ERR: Not implemented"
+	contactList := k.IterativeFindNode(key)
+	var result string
+	for _, contact := range contactList {
+		res := k.DoStore(contact, key, value)
+		if res == "ok" {
+			result = result + contact.NodeID.AsString()
+		}
+	}
+	return result
 }
 func (k *Kademlia) DoIterativeFindValue(key ID) string {
 	// For project 2!
+	shortlist := make([]ContactDistance, 0)
+
+	//node that we have seen
+	seenMap := make(map[ID]bool)
+	returnedValueMap := make(map[ID]bool)
+
+	//nodes that have not been queried yet
+	unqueriedList := list.New()
+
+	//init the stopper
+	stopper := new(Stopper)
+	stopper.stopType = 0
+
+	contactChan = make(chan []Contact, MAX_BUCKET_SIZE*MAX_BUCKET_SIZE*2)
+	valueChan = make(chan Valuer, MAX_BUCKET_SIZE*MAX_BUCKET_SIZE*2)
+	deleteChan = make(chan ID, MAX_BUCKET_SIZE*MAX_BUCKET_SIZE*2)
+
+	//initialize
+	var returnValue []byte
+	contacts := k.FindClosestContacts(id, k.NodeID)[:3]
+	for _, contact := range contacts {
+		seenMap[contact.NodeID] = true
+		unqueriedList.PushBack(contact)
+		shortlist = append(shortlist, k.contactToDistanceContact(contact))
+	}
+
+	// alpha query
+	for i := 0; i < ALPHA && unqueriedList.Len() > 0; i++ {
+		//check if end
+		stopper.stopMutex.RLock
+		if stopper.stopType != 0 {
+			break
+		}
+		stopper.stopMutex.RUnlock
+		front := unqueriedList.Front()
+		unqueriedList.Remove(front)
+		contact := front.Value.(Contact)
+		go k.iterFindValuQeuery(node, target, contactChan, valuerChan, deleteChan)
+	}
+
+	go func() {
+		for {
+			select {
+			case contactList := <-contactChan:
+				for _, contact := range contacts {
+					if _, ok := seenMap[contact.NodeID]; ok == false {
+						shortlist = append(shortlist, k.contactToDistanceContact(contact, id))
+						unqueriedList.PushBack(contact)
+						seenMap[contact.NodeID] = true
+					}
+				}
+			case valuer := <-valueChan:
+				returnValue = valuer.value
+				returnedValueMap[valuer.NodeID] = true
+				stopper.stopMutex.Lock
+				stopper.stopType = 3
+				stopper.stopMutex.Unlock
+			case deleteNodeId := <-deleteChan:
+				for i := 0; i < len(shortlist); i++ {
+					if shortlist[i].NodeID.Equals(deleteNodeId) {
+						shortlist = append(shorlist[:i], shortlist[i+1]...)
+						break
+					}
+				}
+				delete(seenMap, deleteNodeId)
+			default:
+
+			}
+		}
+	}()
+
+	for {
+		stopper.stopMutex.RLock
+		if stopper.stopType != 0 {
+			break
+		}
+		stopper.stopMutex.RUnlock
+		// alpha query
+		for i := 0; i < ALPHA && unqueriedList.Len() > 0; i++ {
+			//check if end
+			stopper.stopMutex.RLock
+			if stopper.stopType != 0 {
+				break
+			}
+			stopper.stopMutex.RUnlock
+			front := unqueriedList.Front()
+			unqueriedList.Remove(front)
+			contact := front.Value.(Contact)
+			go k.iterFindValuQeuery(node, target, contactChan, valuerChan, deleteChan)
+		}
+	}
+
 	return "ERR: Not implemented"
 }
 
-func (k *Kademlia) rpcFindNodeForIterative(nodes []Contact, searchId ID) {
+func (k *Kademlia) iterFindValuQeuery(node *Contact, target NodeID, contactChan chan []Contact, valuerChan chan Valuer, deleteChan chan ID) {
+	client, errDial := rpc.DialHTTP("tcp", contact.Host.String()+":"+strconv.Itoa(int(contact.Port)))
+	if err != nil {
+		deleteChan <- node.NodeID
+	}
 
+	//create find value request and result
+	findValueReq := new(FindValueRequest)
+	findValueReq.Sender = k.SelfContact
+	findValueReq.MsgID = NewRandomID()
+	findValueReq.Key = searchKey
+
+	findValueRes := new(FindValueResult)
+
+	//find value
+	errCall = client.Call("KademliaCore.FindValue", findValueReq, findValueRes)
+
+	if err != nil {
+		deleteChan <- node.NodeID
+	}
+
+	defer client.Close()
+
+	//update contact
+	k.UpdateContact(*contact)
+	if findValueRes.Nodes != nil {
+		for _, contactItem := range findValueRes.Nodes {
+			k.UpdateContact(contactItem)
+		}
+	}
+	if findValueRes.Value != nil {
+		valuer := new(Valuer)
+		valuer.value = findValueRes.Value
+		valuer.NodeID = node.NodeID
+		valuerChan <- valuer
+	} else if findValueRes.Nodes != nil {
+		contactChan <- findValueRes.Nodes
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -368,7 +529,7 @@ func (k *Kademlia) FindBucket(nodeid ID) *list.List {
 	k.storeMutex.RLock()
 	defer k.storeMutex.RUnlock()
 	prefixLength := k.NodeID.Xor(nodeid).PrefixLen()
-	if prefixLength == 160{
+	if prefixLength == 160 {
 		return nil
 	}
 	bucketIndex := (IDBytes * 8) - prefixLength
@@ -394,60 +555,8 @@ func (k *Kademlia) FindContactInBucket(nodeId ID, bucket *list.List) (*list.Elem
 	return nil, &NotFoundError{nodeId, "Not found"}
 }
 
-// func (k *Kademlia) FindClosestContacts(searchKey ID, senderKey ID) []Contact {
-// 	k.storeMutex.RLock()
-// 	defer k.storeMutex.RUnlock()
-// 	var count int
-// 	result := make([]Contact, 0)
-// 	prefixLength := k.NodeID.Xor(searchKey).PrefixLen()
-// 	globalIndex := (IDBytes * 8) - prefixLength
-// 	if globalIndex > (IDBytes*8 - 1) {
-// 		globalIndex = (IDBytes*8 - 1)
-// 	}
-
-// 	bucketIndex := globalIndex
-
-// 	for bucketIndex >= 0 {
-// 		targetBucket := k.buckets[bucketIndex]
-// 		for i := targetBucket.Front(); i != nil; i = i.Next() {
-// 			if !i.Value.(Contact).NodeID.Equals(senderKey){
-// 			result = append(result, i.Value.(Contact))
-// 			count++
-// 			if count == MAX_BUCKET_SIZE {
-// 				return result
-// 				}
-// 			}
-// 		}
-// 		bucketIndex--
-// 	}
-
-// 	bucketIndex = globalIndex + 1
-
-// 	for bucketIndex < IDBytes*8 {
-// 		targetBucket := k.buckets[bucketIndex]
-// 		for i := targetBucket.Front(); i != nil; i = i.Next() {
-// 			if !i.Value.(Contact).NodeID.Equals(senderKey){
-// 			result = append(result, i.Value.(Contact))
-// 			count++
-// 			if count == MAX_BUCKET_SIZE {
-// 				return result
-// 				}
-// 			}
-// 		}
-// 		bucketIndex++
-// 	}
-	
-
-// 	if len(result) == 0 {
-// 		return nil
-// 	}
-// 	//bucket := k.FindBucket(searchKey)
-
-// 	return result
-// }
-
 func (k *Kademlia) FindClosestContacts(searchKey ID, senderKey ID) []Contact {
-	contactDistanceList := k.FindAllKnownContact(searchKey,senderKey)
+	contactDistanceList := k.FindAllKnownContact(searchKey, senderKey)
 	result := k.FindClosestContactsBySort(contactDistanceList)
 	return result
 
@@ -461,7 +570,7 @@ func (k *Kademlia) FindAllKnownContact(searchKey ID, senderKey ID) []ContactDist
 	for bucketIndex < IDBytes*8 {
 		targetBucket := k.buckets[bucketIndex]
 		for i := targetBucket.Front(); i != nil; i = i.Next() {
-			if !i.Value.(Contact).NodeID.Equals(senderKey){
+			if !i.Value.(Contact).NodeID.Equals(senderKey) {
 				contactD := new(ContactDistance)
 				contactD.SelfContact = i.Value.(Contact)
 				contactD.Distance = i.Value.(Contact).NodeID.Xor(searchKey)
@@ -470,7 +579,6 @@ func (k *Kademlia) FindAllKnownContact(searchKey ID, senderKey ID) []ContactDist
 		}
 		bucketIndex++
 	}
-	
 
 	if len(result) == 0 {
 		return nil
@@ -501,10 +609,9 @@ func (k *Kademlia) FindClosestContactsBySort(contactDistanceList []ContactDistan
 
 }
 
-func (a ByDistance) Len() int { return len(a) }
-func (a ByDistance) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByDistance) Len() int           { return len(a) }
+func (a ByDistance) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByDistance) Less(i, j int) bool { return a[i].Distance.Less(a[j].Distance) }
-
 
 //Convert contacts to string
 func (k *Kademlia) ContactsToString(contacts []Contact) string {
@@ -514,8 +621,6 @@ func (k *Kademlia) ContactsToString(contacts []Contact) string {
 	}
 	return res[:len(res)]
 }
-
-
 
 func (k *Kademlia) PingWithOutUpdate(host net.IP, port uint16) string {
 
@@ -541,15 +646,11 @@ func (k *Kademlia) PingWithOutUpdate(host net.IP, port uint16) string {
 	return "ok"
 }
 
-
-
-
-
 /*================================================================================
 Functions for Project 2
 ================================================================================ */
 func (k *Kademlia) closestContacts(searchKey ID, senderKey ID, num int) []Contact {
-	contactDistanceList := k.FindAllKnownContact(searchKey,senderKey)
+	contactDistanceList := k.FindAllKnownContact(searchKey, senderKey)
 	result := k.FindNClosestContacts(contactDistanceList, num)
 	return result
 }
@@ -580,7 +681,7 @@ func (k *Kademlia) compareDistance(c1 Contact, c2 Contact, id ID) int {
 	return distance1.Compare(distance2)
 }
 
-//From shortlist get the unmarked list 
+//From shortlist get the unmarked list
 func (k *Kademlia) getUnmarkedNodes(markedMap map[ID]bool, shortlist *list.List, num int) []Contact {
 	unmarkedNodes := make([]Contact, 0)
 	for i := shortlist.Front(); i != nil; i = i.Next() {
@@ -594,4 +695,3 @@ func (k *Kademlia) getUnmarkedNodes(markedMap map[ID]bool, shortlist *list.List,
 	}
 	return unmarkedNodes
 }
-
