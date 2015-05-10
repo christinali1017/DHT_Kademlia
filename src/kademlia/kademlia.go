@@ -385,10 +385,13 @@ func (k* Kademlia) IterativeFindNode(id ID) []Contact {
 					}()
 				}
 			case <-stop:
-				if len(shortlist) < 20 {
-					return FindClosestContactsBySort(shortlist)
-				}
-				return FindClosestContactsBySort(shortlist[:MAX_BUCKET_SIZE+1])
+				if len(res) == 0 {
+					if len(shortlist) < 20 {
+						return FindClosestContactsBySort(shortlist)
+					}
+					return FindClosestContactsBySort(shortlist[:MAX_BUCKET_SIZE+1])
+				} 
+				break;
 			default:	
 		}
 	}
@@ -413,6 +416,14 @@ func (k* Kademlia) IterativeFindNode(id ID) []Contact {
 				}
 				delete(seenMap, contact.NodeID)
 			default:	
+		}
+	}
+
+	//make sure that res is flushed to the shortlist
+
+	for {
+		if len(res) == 0{
+			break;
 		}
 	}
 
