@@ -47,6 +47,15 @@ type ContactDistance struct{
 
 type ByDistance []ContactDistance
 
+type Stopper struct {
+	stopMutex sync.RWMutex
+	stopType  int
+	//0: No stop 
+	//1: Have accumulate k active
+	//2: No improve in shortlist
+	//3: Found value
+}
+
 func NewKademlia(laddr string) *Kademlia {
 	// TODO: Initialize other state here as you add functionality.
 	k := new(Kademlia)
@@ -205,6 +214,7 @@ func (k *Kademlia) DoFindNode(contact *Contact, searchKey ID) string {
 	}
 
 	//update contact
+	k.UpdateContact(contact)
 	var res string
 	for _, contact := range findNodeRes.Nodes {
 		k.UpdateContact(contact)
@@ -243,6 +253,9 @@ func (k *Kademlia) DoFindValue(contact *Contact, searchKey ID) string {
 
 	//update contact
 	k.UpdateContact(*contact)
+	for _, contact := range findValueRes.Nodes {
+		k.UpdateContact(contact)
+	}
 
 	var res string
 	//if value if found return value, else return closest contacts
@@ -273,19 +286,98 @@ func (k *Kademlia) LocalFindValue(searchKey ID) string {
 func (k *Kademlia) DoIterativeFindNode(id ID) string {
 	// For project 2!
 
-	shortlist := list.New()
-	markedMap := make(map[ID]bool)
-	initalizeContacts := k.closestContacts(id, k.NodeID, ALPHA)
-	// fmt.Println(k.ContactsToString(initalizeContacts))
+	// shortlist := list.New()
+	// markedMap := make(map[ID]bool)
+	// initalizeContacts := k.closestContacts(id, k.NodeID, ALPHA)
+	// // fmt.Println(k.ContactsToString(initalizeContacts))
 
-	for {
-		searchNodes := getUnmarkedNodes(markedMap, shortlist, ALPHA)
+	// for {
+	// 	searchNodes := getUnmarkedNodes(markedMap, shortlist, ALPHA)
 
-	}
-	
-	return "ERR: Not implemented"
+	// }
+
+	//sort
+	//sort.Sort(ByDistance(contactDistanceList))
+	shortlist := IterativeFindNode(id) 
+	// shortcontacts := FindClosestContactsBySort(shortlist)
+	return k.ContactsToString(shortlist)
 }
 
+func (k* Kademlia) IterativeFindNode(id ID) []Contact {
+
+
+	shortlist = make([]ContactDistance, 0)
+
+	//node that we have seen
+	seenMap := make(map[ID]bool)
+
+	//nodes that have not been queried yet
+	unqueriedList := list.New()
+
+	//channel for query result
+	res := make(chan []Contact, 120)
+
+	//channel for nodes need to be deleted
+	deleteNodes := make(chan Contact, 120)
+
+	stopper := new(Stopper)
+
+	//initialize shortlist, seenmap
+	contacts := k.FindClosestContacts(id, k.NodeID)[:3]
+	for _, contact := range contacts {
+		seenMap[contact.NodeID] = true
+		unqueriedList.PushBack(contact)
+		shortlist = append(shortlist, k.contactToDistanceContact(contact, id)) 
+	}
+
+	// alpha query
+	for i := 0; i < ALPHA && unqueriedList.Len() > 0 ; i++ {
+		//check if end 
+		stopper.stopMutex.RLock
+		if stopper.stopType != 0 {
+			break;
+		}
+		stopper.stopMutex.RUnlock
+		
+		front := unqueriedList.Front()
+		contact := front.Value.(Contact)
+		unqueriedList.Remove(front)
+		go func() {
+			 err := k.rpcQuery(contact, id, res)	
+			 if err != nil {
+			 	deleteNodes <- contact
+			 }
+		}()
+	}
+
+	//add res to shortlist
+	for {
+		select {
+			case contacts <- res:
+				for _, contact := range contacts {
+					if _, ok := seenMap[contact.NodeID]; ok == false {
+						shortlist = append(shortlist, k.contactToDistanceContact(contact, id))
+						unqueriedList.PushBack(contact)
+						seenMap[contact.NodeID] = true;
+					}
+				}
+			case contact <- deleteNodes:
+				for i := 0; i < len(shortlist); i++ {
+					if shortlist[i].NodeID.Equals(Contact.NodeID) {
+						shortlist = append(shorlist[:i], shortlist[i+1]...)
+						break;
+					}
+				}
+				delete(seenMap, contact.NodeID)
+			default:	
+		}
+	}
+
+	if len(shortlist) < 20 {
+		return FindClosestContactsBySort(shortlist)
+	}
+	return FindClosestContactsBySort(shortlist[:MAX_BUCKET_SIZE+1])
+}
 
 func (k *Kademlia) DoIterativeStore(key ID, value []byte) string {
 	// For project 2!
@@ -296,8 +388,39 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 	return "ERR: Not implemented"
 }
 
-func (k *Kademlia) rpcFindNodeForIterative(nodes []Contact, searchId ID) {
+//rpc query for iterativefindnode
+func (k *Kademlia) rpcQuery(node Contact, searchId ID, res chan []Contact) error {
+	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+strconv.Itoa(int(contact.Port)))
 
+	if err != nil {
+		return err
+	}
+
+	//create find node request and result
+	findNodeRequest := new(FindNodeRequest)
+	findNodeRequest.Sender = k.SelfContact
+	findNodeRequest.MsgID = NewRandomID()
+	findNodeRequest.NodeID = searchKey
+
+	findNodeRes := new(FindNodeResult)
+
+	//find node
+	err = client.Call("KademliaCore.FindNode", findNodeRequest, findNodeRes)
+
+	if err != nil {
+		return err;
+	}
+
+	res <- findNodeRes.Nodes
+
+	//update contact
+	k.UpdateContact(contact)
+	var res string
+	for _, contact := range findNodeRes.Nodes {
+		k.UpdateContact(contact)
+	}
+
+	return err
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -593,5 +716,12 @@ func (k *Kademlia) getUnmarkedNodes(markedMap map[ID]bool, shortlist *list.List,
 		}
 	}
 	return unmarkedNodes
+}
+
+func (k *Kademlia) contactToDistanceContact(contact Contact, id ID) {
+	contactD := new(ContactDistance)
+	contactD.SelfContact = contact.Value.(Contact)
+	contactD.Distance = contact.Value.(Contact).NodeID.Xor(id)
+	return contactD
 }
 
