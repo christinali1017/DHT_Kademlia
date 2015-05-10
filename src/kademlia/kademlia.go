@@ -491,9 +491,9 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 			case valuer := <-valueChan:
 				returnValue = valuer.value
 				returnedValueMap[valuer.NodeID] = true
-				stopper.stopMutex.Lock
+				stopper.stopMutex.Lock()
 				stopper.stopType = 3
-				stopper.stopMutex.Unlock
+				stopper.stopMutex.Unlock()
 			case deleteNodeId := <-deleteChan:
 				for i := 0; i < len(shortlist); i++ {
 					if shortlist[i].NodeID.Equals(deleteNodeId) {
@@ -517,11 +517,11 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 		// alpha query
 		for i := 0; i < ALPHA && unqueriedList.Len() > 0; i++ {
 			//check if end
-			stopper.stopMutex.RLock
+			stopper.stopMutex.RLock()
 			if stopper.stopType != 0 {
 				break
 			}
-			stopper.stopMutex.RUnlock
+			stopper.stopMutex.RUnlock()
 			front := unqueriedList.Front()
 			unqueriedList.Remove(front)
 			contact := front.Value.(Contact)
