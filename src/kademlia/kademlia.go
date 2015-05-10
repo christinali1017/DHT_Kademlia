@@ -392,16 +392,6 @@ func (k* Kademlia) IterativeFindNode(id ID) []Contact {
 }
 
 
-	// for {
-	// 	searchNodes := getUnmarkedNodes(markedMap, shortlist, ALPHA)
-
-	// }
-
-	return "ERR: Not implemented"
-}
-
-
-
 func (k *Kademlia) DoIterativeStore(key ID, value []byte) string {
 	// For project 2!
 	contactList := k.IterativeFindNode(key)
@@ -537,13 +527,13 @@ func (k *Kademlia) rpcQuery(node Contact, searchId ID, res chan []Contact) error
 	res <- findNodeRes.Nodes
 
 	//update contact
-	k.UpdateContact(contact)
-	var res string
+	k.UpdateContact(node)
 	for _, contact := range findNodeRes.Nodes {
 		k.UpdateContact(contact)
 	}
 
 	return err
+}
 func (k *Kademlia) iterFindValuQeuery(node *Contact, target NodeID, contactChan chan []Contact, valuerChan chan Valuer, deleteChan chan ID) {
 	client, errDial := rpc.DialHTTP("tcp", contact.Host.String()+":"+strconv.Itoa(int(contact.Port)))
 	if err != nil {
