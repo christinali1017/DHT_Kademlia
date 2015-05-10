@@ -345,11 +345,11 @@ func (k* Kademlia) IterativeFindNode(id ID) []Contact {
 	// alpha query
 	for i := 0; i < ALPHA && unqueriedList.Len() > 0 ; i++ {
 		//check if end 
-		stopper.stopMutex.RLock
+		stopper.stopMutex.RLock()
 		if stopper.stopType != 0 {
 			break;
 		}
-		stopper.stopMutex.RUnlock
+		stopper.stopMutex.RUnlock()
 		
 		front := unqueriedList.Front()
 		contact := front.Value.(Contact)
@@ -435,11 +435,11 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 	// alpha query
 	for i := 0; i < ALPHA && unqueriedList.Len() > 0; i++ {
 		//check if end
-		stopper.stopMutex.RLock
+		stopper.stopMutex.RLock()
 		if stopper.stopType != 0 {
 			break
 		}
-		stopper.stopMutex.RUnlock
+		stopper.stopMutex.RUnlock()
 		front := unqueriedList.Front()
 		unqueriedList.Remove(front)
 		contact := front.Value.(Contact)
@@ -460,9 +460,12 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 			case valuer := <-valueChan:
 				returnValue = valuer.value
 				returnedValueMap[valuer.NodeID] = true
-				stopper.stopMutex.Lock
-				stopper.stopType = 3
-				stopper.stopMutex.Unlock
+				if len(valueChan) == 0{
+					stopper.stopMutex.Lock()
+					stopper.stopType = 3
+					stopper.stopMutex.Unlock()
+					return
+				}
 			case deleteNodeId := <-deleteChan:
 				for i := 0; i < len(shortlist); i++ {
 					if shortlist[i].NodeID.Equals(deleteNodeId) {
@@ -478,11 +481,11 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 	}()
 
 	for {
-		stopper.stopMutex.RLock
+		stopper.stopMutex.RLock()
 		if stopper.stopType != 0 {
 			break
 		}
-		stopper.stopMutex.RUnlock
+		stopper.stopMutex.RUnlock()
 		// alpha query
 		for i := 0; i < ALPHA && unqueriedList.Len() > 0; i++ {
 			//check if end
@@ -490,7 +493,7 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 			if stopper.stopType != 0 {
 				break
 			}
-			stopper.stopMutex.RUnlock
+			stopper.stopMutex.RUnlock()
 			front := unqueriedList.Front()
 			unqueriedList.Remove(front)
 			contact := front.Value.(Contact)
