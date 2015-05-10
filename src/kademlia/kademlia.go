@@ -274,8 +274,18 @@ func (k *Kademlia) DoIterativeFindNode(id ID) string {
 	// For project 2!
 
 	shortlist := list.New()
+	markedMap := make(map[ID]bool)
+	initalizeContacts := k.closestContacts(id, k.NodeID, alpha)
+	// fmt.Println(k.ContactsToString(initalizeContacts))
 
-	
+	for {
+		searchNodes := getUnmarkedNodes(markedMap, shortlist, alpha)
+		
+	}
+
+
+
+
 
 	return "ERR: Not implemented"
 }
@@ -288,6 +298,10 @@ func (k *Kademlia) DoIterativeStore(key ID, value []byte) string {
 func (k *Kademlia) DoIterativeFindValue(key ID) string {
 	// For project 2!
 	return "ERR: Not implemented"
+}
+
+func (k *Kademlia) rpcFindNodeForIterative(nodes []Contact, searchId ID) {
+
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -440,8 +454,6 @@ func (k *Kademlia) FindClosestContacts(searchKey ID, senderKey ID) []Contact {
 
 }
 
-
-
 func (k *Kademlia) FindAllKnownContact(searchKey ID, senderKey ID) []ContactDistance {
 	k.storeMutex.RLock()
 	defer k.storeMutex.RUnlock()
@@ -493,6 +505,8 @@ func (k *Kademlia) FindClosestContactsBySort(contactDistanceList []ContactDistan
 func (a ByDistance) Len() int { return len(a) }
 func (a ByDistance) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a ByDistance) Less(i, j int) bool { return a[i].Distance.Less(a[j].Distance) }
+
+
 //Convert contacts to string
 func (k *Kademlia) ContactsToString(contacts []Contact) string {
 	var res string
@@ -529,9 +543,56 @@ func (k *Kademlia) PingWithOutUpdate(host net.IP, port uint16) string {
 }
 
 
+
+
+
+/*================================================================================
+Functions for Project 2
+================================================================================ */
+func (k *Kademlia) closestContacts(searchKey ID, senderKey ID, num int) []Contact {
+	contactDistanceList := k.FindAllKnownContact(searchKey,senderKey)
+	result := k.FindNClosestContacts(contactDistanceList, num)
+	return result
+}
+
+func (k *Kademlia) FindNClosestContacts(contactDistanceList []ContactDistance, num int) []Contact {
+	sort.Sort(ByDistance(contactDistanceList))
+	result := make([]Contact, 0)
+	for _, contactDistanceItem := range contactDistanceList {
+		result = append(result, contactDistanceItem.SelfContact)
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+
+	if len(result) <= num {
+		return result
+	}
+
+	result = result[0:num]
+
+	return result
+
+}
 func (k *Kademlia) compareDistance(c1 Contact, c2 Contact, id ID) int {
 	distance1 := c1.NodeID.Xor(id)
 	distance2 := c2.NodeID.Xor(id)
 	return distance1.Compare(distance2)
+}
+
+//From shortlist get the unmarked list 
+func (k *Kademlia) getUnmarkedNodes(markedMap map[ID]bool, shortlist *list.List, num int) []Contact {
+	unmarkedNodes := make([]Contact, 0)
+	for i := shortlist.Front(); i != nil; i = i.Next() {
+		contact := i.Value.(Contact)
+		if !markedMap[contact.NodeID] {
+			unmarkedNodes.append(contact)
+			if len(unmarkedNodes) >= num {
+				break
+			}
+		}
+	}
+	return unmarkedNodes
 }
 
