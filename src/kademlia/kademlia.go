@@ -371,14 +371,14 @@ func (k* Kademlia) IterativeFindNode(id ID) []Contact {
 						 if err != nil {
 						 	deleteNodes <- contact
 						 } else {
-						 	counter.counterMutex.WLock()
+						 	counter.counterMutex.Lock()
 						 	counter = counter + 1
-						 	counter.counterMutex.WUnlock()
+						 	counter.counterMutex.Unlock()
 						 	counter.counterMutex.RLock()
 						 	if counter >= MAX_BUCKET_SIZE {
-						 		stopper.stopMutex.WLock()
+						 		stopper.stopMutex.Lock()
 						 		stopper.stopType = 1;
-						 		stopper.stopMutex.WUnlock()
+						 		stopper.stopMutex.Unlock()
 						 	}
 						 	counter.counterMutex.RUnlock()
 						 }
