@@ -630,7 +630,7 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 			returnString = returnString + "ID:" + k.AsString()
 		}
 	} else {
-		returnString = k.ContactsToString(returnContacts)
+		returnString = "ERR: Value not found"
 	}
 	return returnString
 }
