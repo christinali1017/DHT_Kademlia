@@ -301,20 +301,7 @@ func (k *Kademlia) LocalFindValue(searchKey ID) string {
 }
 
 func (k *Kademlia) DoIterativeFindNode(id ID) string {
-	// For project 2!
 
-	// shortlist := list.New()
-	// markedMap := make(map[ID]bool)
-	// initalizeContacts := k.closestContacts(id, k.NodeID, ALPHA)
-	// // fmt.Println(k.ContactsToString(initalizeContacts))
-
-	// for {
-	// 	searchNodes := getUnmarkedNodes(markedMap, shortlist, ALPHA)
-
-	// }
-
-	//sort
-	//sort.Sort(ByDistance(contactDistanceList))
 	shortlist := k.IterativeFindNode(id)
 	// shortcontacts := FindClosestContactsBySort(shortlist)
 	return k.ContactsToString(shortlist)
@@ -359,6 +346,55 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 
 	//stop channel for time
 	stop := make(chan bool)
+
+	go func() {
+		//add res to shortlist
+		for {
+			select {
+			case contacts := <-res:
+				for _, contact := range contacts {
+					if _, ok := seenMap[contact.NodeID]; ok == false {
+						shortlist = append(shortlist, k.contactToDistanceContact(contact, id))
+						unqueriedList.PushBack(contact)
+						seenMap[contact.NodeID] = true
+					}
+				}
+
+				//sort shortlist
+				sort.Sort(ByDistance(shortlist))
+
+				//check if short list is improved
+				for i := 0; i < len(shortlist) && i < MAX_BUCKET_SIZE; i++ {
+					if !oldVersion[i].SelfContact.NodeID.Equals(shortlist[i].SelfContact.NodeID) {
+						isUpdated = true
+						if len(shortlist) <= 20 {
+							oldVersion = shortlist
+						}
+						oldVersion = shortlist[:MAX_BUCKET_SIZE+1]
+					}
+				}
+
+				if !isUpdated {
+					stopper.stopMutex.Lock()
+					stopper.value = 2
+					stopper.stopMutex.Unlock()
+					stop <- true
+					break
+				}
+
+			case contact := <-deleteNodes:
+				for i := 0; i < len(shortlist); i++ {
+					if shortlist[i].SelfContact.NodeID.Equals(contact.NodeID) {
+						shortlist = append(shortlist[:i], shortlist[i+1:]...)
+						break
+					}
+				}
+				delete(seenMap, contact.NodeID)
+			default:
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-time.After(TIME_INTERVAL):
@@ -407,51 +443,6 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 		}
 	}
 
-	//add res to shortlist
-	for {
-		select {
-		case contacts := <-res:
-			for _, contact := range contacts {
-				if _, ok := seenMap[contact.NodeID]; ok == false {
-					shortlist = append(shortlist, k.contactToDistanceContact(contact, id))
-					unqueriedList.PushBack(contact)
-					seenMap[contact.NodeID] = true
-				}
-			}
-
-			//sort shortlist
-			sort.Sort(ByDistance(shortlist))
-
-			//check if short list is improved
-			for i := 0; i < len(shortlist) && i < MAX_BUCKET_SIZE; i++ {
-				if !oldVersion[i].SelfContact.NodeID.Equals(shortlist[i].SelfContact.NodeID) {
-					isUpdated = true
-					if len(shortlist) <= 20 {
-						oldVersion = shortlist
-					}
-					oldVersion = shortlist[:MAX_BUCKET_SIZE+1]
-				}
-			}
-
-			if !isUpdated {
-				stopper.stopMutex.Lock()
-				stopper.value = 2
-				stopper.stopMutex.Unlock()
-				stop <- true
-				break
-			}
-
-		case contact := <-deleteNodes:
-			for i := 0; i < len(shortlist); i++ {
-				if shortlist[i].SelfContact.NodeID.Equals(contact.NodeID) {
-					shortlist = append(shortlist[:i], shortlist[i+1:]...)
-					break
-				}
-			}
-			delete(seenMap, contact.NodeID)
-		default:
-		}
-	}
 
 	//make sure that res is flushed to the shortlist
 
@@ -902,52 +893,6 @@ func (k *Kademlia) PingWithOutUpdate(host net.IP, port uint16) string {
 /*================================================================================
 Functions for Project 2
 ================================================================================ */
-func (k *Kademlia) closestContacts(searchKey ID, senderKey ID, num int) []Contact {
-	contactDistanceList := k.FindAllKnownContact(searchKey, senderKey)
-	result := k.FindNClosestContacts(contactDistanceList, num)
-	return result
-}
-
-func (k *Kademlia) FindNClosestContacts(contactDistanceList []ContactDistance, num int) []Contact {
-	sort.Sort(ByDistance(contactDistanceList))
-	result := make([]Contact, 0)
-	for _, contactDistanceItem := range contactDistanceList {
-		result = append(result, contactDistanceItem.SelfContact)
-	}
-
-	if len(result) == 0 {
-		return nil
-	}
-
-	if len(result) <= num {
-		return result
-	}
-
-	result = result[0:num]
-
-	return result
-
-}
-func (k *Kademlia) compareDistance(c1 Contact, c2 Contact, id ID) int {
-	distance1 := c1.NodeID.Xor(id)
-	distance2 := c2.NodeID.Xor(id)
-	return distance1.Compare(distance2)
-}
-
-//From shortlist get the unmarked list
-// func (k *Kademlia) getUnmarkedNodes(markedMap map[ID]bool, shortlist *list.List, num int) []Contact {
-// 	unmarkedNodes := make([]Contact, 0)
-// 	for i := shortlist.Front(); i != nil; i = i.Next() {
-// 		contact := i.Value.(Contact)
-// 		if !markedMap[contact.NodeID] {
-// 			unmarkedNodes.append(contact)
-// 			if len(unmarkedNodes) >= num {
-// 				break
-// 			}
-// 		}
-// 	}
-// 	return unmarkedNodes
-// }
 
 func (k *Kademlia) contactToDistanceContact(contact Contact, id ID) ContactDistance {
 	contactD := new(ContactDistance)
