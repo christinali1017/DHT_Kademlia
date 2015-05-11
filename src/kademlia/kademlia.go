@@ -366,7 +366,7 @@ func (k* Kademlia) IterativeFindNode(id ID) []Contact {
 				// alpha query
 				for i := 0; i < ALPHA && unqueriedList.Len() > 0 ; i++ {
 					//check if end 
-					stopper.stopMutex.RLock
+					stopper.stopMutex.RLock()
 					if stopper.stopType != 0 {
 						break;
 					}
