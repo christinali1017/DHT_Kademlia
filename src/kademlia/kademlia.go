@@ -29,8 +29,8 @@ const (
 	TOTAL_BUCKETS   = 8 * IDBytes
 	MAX_BUCKET_SIZE = 20
 	ALPHA           = 3
-	NUMER_TIME = float64(0.3)
-	TIME_INTERVAL   =  3 * time.Second
+	NUMER_TIME      = float64(0.3)
+	TIME_INTERVAL   = 3 * time.Second
 )
 
 // Kademlia type. You can put whatever state you need in this.
@@ -51,8 +51,8 @@ type ByDistance []ContactDistance
 
 type Stopper struct {
 	stopMutex sync.RWMutex
-	value int
-	//0: No stop 
+	value     int
+	//0: No stop
 	//1: Have accumulate k active
 	//2: No improve in shortlist
 	//3: Found value
@@ -60,7 +60,7 @@ type Stopper struct {
 
 type Counter struct {
 	counterMutex sync.RWMutex
-	value int
+	value        int
 }
 
 type Valuer struct {
@@ -315,13 +315,12 @@ func (k *Kademlia) DoIterativeFindNode(id ID) string {
 
 	//sort
 	//sort.Sort(ByDistance(contactDistanceList))
-	shortlist := k.IterativeFindNode(id) 
+	shortlist := k.IterativeFindNode(id)
 	// shortcontacts := FindClosestContactsBySort(shortlist)
 	return k.ContactsToString(shortlist)
 }
 
-func (k* Kademlia) IterativeFindNode(id ID) []Contact {
-
+func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 
 	shortlist := make([]ContactDistance, 0)
 
@@ -350,115 +349,115 @@ func (k* Kademlia) IterativeFindNode(id ID) []Contact {
 	oldVersion := make([]ContactDistance, MAX_BUCKET_SIZE)
 
 	//bool for check if the shortlist is updated
-	isUpdated := false 
+	isUpdated := false
 
 	for _, contact := range contacts {
 		seenMap[contact.NodeID] = true
 		unqueriedList.PushBack(contact)
-		shortlist = append(shortlist, k.contactToDistanceContact(contact, id)) 
+		shortlist = append(shortlist, k.contactToDistanceContact(contact, id))
 	}
 
 	//stop channel for time
 	stop := make(chan bool)
 	for {
 		select {
-			case <-time.After(TIME_INTERVAL):
-				// alpha query
-				for i := 0; i < ALPHA && unqueriedList.Len() > 0 ; i++ {
-					//check if end 
-					stopper.stopMutex.RLock()
-					if stopper.value != 0 {
-						break;
-					}
-					stopper.stopMutex.RUnlock()
-					
-					front := unqueriedList.Front()
-					contact := front.Value.(Contact)
-					unqueriedList.Remove(front)
-					go func() {
-						 err := k.rpcQuery(contact, id, res)	
-						 if err != nil {
-						 	deleteNodes <- contact
-						 } else {
-
-						 	counter.counterMutex.Lock()
-						 	counter.value++
-						 	counter.counterMutex.Unlock()
-
-						 	counter.counterMutex.RLock()
-						 	if counter.value >= MAX_BUCKET_SIZE {
-						 		stopper.stopMutex.Lock()
-						 		stopper.value = 1;
-						 		stopper.stopMutex.Unlock()
-						 		stop <- true
-						 	}
-						 	counter.counterMutex.RUnlock()
-						 }
-					}()
+		case <-time.After(TIME_INTERVAL):
+			// alpha query
+			for i := 0; i < ALPHA && unqueriedList.Len() > 0; i++ {
+				//check if end
+				stopper.stopMutex.RLock()
+				if stopper.value != 0 {
+					break
 				}
-			case <-stop:
-				if len(res) == 0 {
-					if len(shortlist) < 20 {
-						return k.FindClosestContactsBySort(shortlist)
+				stopper.stopMutex.RUnlock()
+
+				front := unqueriedList.Front()
+				contact := front.Value.(Contact)
+				unqueriedList.Remove(front)
+				go func() {
+					err := k.rpcQuery(contact, id, res)
+					if err != nil {
+						deleteNodes <- contact
+					} else {
+
+						counter.counterMutex.Lock()
+						counter.value++
+						counter.counterMutex.Unlock()
+
+						counter.counterMutex.RLock()
+						if counter.value >= MAX_BUCKET_SIZE {
+							stopper.stopMutex.Lock()
+							stopper.value = 1
+							stopper.stopMutex.Unlock()
+							stop <- true
+						}
+						counter.counterMutex.RUnlock()
 					}
-					return k.FindClosestContactsBySort(shortlist[:MAX_BUCKET_SIZE+1])
-				} 
-				break;
-			default:	
+				}()
+			}
+		case <-stop:
+			if len(res) == 0 {
+				if len(shortlist) < 20 {
+					return k.FindClosestContactsBySort(shortlist)
+				}
+				return k.FindClosestContactsBySort(shortlist[:MAX_BUCKET_SIZE+1])
+			}
+			break
+		default:
 		}
 	}
 
 	//add res to shortlist
 	for {
 		select {
-			case contacts := <-res:
-				for _, contact := range contacts {
-					if _, ok := seenMap[contact.NodeID]; ok == false {
-						shortlist = append(shortlist, k.contactToDistanceContact(contact, id))
-						unqueriedList.PushBack(contact)
-						seenMap[contact.NodeID] = true
+		case contacts := <-res:
+			for _, contact := range contacts {
+				if _, ok := seenMap[contact.NodeID]; ok == false {
+					shortlist = append(shortlist, k.contactToDistanceContact(contact, id))
+					unqueriedList.PushBack(contact)
+					seenMap[contact.NodeID] = true
+				}
+			}
+
+			//sort shortlist
+			sort.Sort(ByDistance(shortlist))
+
+			//check if short list is improved
+			for i := 0; i < len(shortlist) && i < MAX_BUCKET_SIZE; i++ {
+				if !oldVersion[i].SelfContact.NodeID.Equals(shortlist[i].SelfContact.NodeID) {
+					isUpdated = true
+					if len(shortlist) <= 20 {
+						oldVersion = shortlist
 					}
+					oldVersion = shortlist[:MAX_BUCKET_SIZE+1]
 				}
+			}
 
-				//sort shortlist
-				sort.Sort(ByDistance(shortlist))
+			if !isUpdated {
+				stopper.stopMutex.Lock()
+				stopper.value = 2
+				stopper.stopMutex.Unlock()
+				stop <- true
+				break
+			}
 
-				//check if short list is improved
-				for i := 0; i < len(shortlist) && i < MAX_BUCKET_SIZE; i++ {
-					if !oldVersion[i].SelfContact.NodeID.Equals(shortlist[i].SelfContact.NodeID) {
-						isUpdated = true;
-						if len(shortlist) <= 20 {
-							oldVersion = shortlist
-						}
-						oldVersion = shortlist[:MAX_BUCKET_SIZE+1]
-					}
+		case contact := <-deleteNodes:
+			for i := 0; i < len(shortlist); i++ {
+				if shortlist[i].SelfContact.NodeID.Equals(contact.NodeID) {
+					shortlist = append(shortlist[:i], shortlist[i+1:]...)
+					break
 				}
-
-				if !isUpdated {
-					stopper.stopMutex.Lock()
-			 		stopper.value = 2;
-			 		stopper.stopMutex.Unlock()
-			 		stop <- true
-			 		break;
-				}
-
-			case contact := <-deleteNodes:
-				for i := 0; i < len(shortlist); i++ {
-					if shortlist[i].SelfContact.NodeID.Equals(contact.NodeID) {
-						shortlist = append(shortlist[:i], shortlist[i+1:]...)
-						break;
-					}
-				}
-				delete(seenMap, contact.NodeID)
-			default:	
+			}
+			delete(seenMap, contact.NodeID)
+		default:
 		}
 	}
 
 	//make sure that res is flushed to the shortlist
 
 	for {
-		if len(res) == 0{
-			break;
+		if len(res) == 0 {
+			break
 		}
 	}
 
@@ -467,7 +466,6 @@ func (k* Kademlia) IterativeFindNode(id ID) []Contact {
 	}
 	return k.FindClosestContactsBySort(shortlist[:MAX_BUCKET_SIZE+1])
 }
-
 
 func (k *Kademlia) DoIterativeStore(key ID, value []byte) string {
 	// For project 2!
@@ -500,6 +498,14 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 	valueChan := make(chan Valuer, MAX_BUCKET_SIZE*MAX_BUCKET_SIZE*2)
 	deleteChan := make(chan ID, MAX_BUCKET_SIZE*MAX_BUCKET_SIZE*2)
 
+	//use to record how many rpc query have send and receive respond
+	counter := new(Counter)
+	//k contact of old short list
+	oldVersion := make([]ContactDistance, MAX_BUCKET_SIZE)
+
+	//bool for check if the shortlist is updated
+	isUpdated := false
+
 	//initialize
 	var returnValue []byte
 	contacts := k.FindClosestContacts(key, k.NodeID)[:3]
@@ -509,73 +515,124 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 		shortlist = append(shortlist, k.contactToDistanceContact(contact, key))
 	}
 
-	// alpha query
-	for i := 0; i < ALPHA && unqueriedList.Len() > 0; i++ {
-		//check if end
-		stopper.stopMutex.RLock()
-		if stopper.value != 0 {
-			break
-		}
-		stopper.stopMutex.RUnlock()
-		front := unqueriedList.Front()
-		unqueriedList.Remove(front)
-		contact := front.Value.(Contact)
-		go k.iterFindValuQeuery(&contact, key, contactChan, valueChan, deleteChan)
-	}
-
+	//stop channel for time
+	stop := make(chan bool)
 	go func() {
 		for {
 			select {
-			case contacts := <-contactChan:
-				for _, contact := range contacts {
-					if _, ok := seenMap[contact.NodeID]; ok == false {
-						shortlist = append(shortlist, k.contactToDistanceContact(contact, key))
-						unqueriedList.PushBack(contact)
-						seenMap[contact.NodeID] = true
-					}
-				}
-			case valuer := <-valueChan:
-				returnValue = valuer.value
-				returnedValueMap[valuer.NodeID] = true
-				stopper.stopMutex.Lock()
-				stopper.value = 3
-				stopper.stopMutex.Unlock()
-			case deleteNodeId := <-deleteChan:
-				for i := 0; i < len(shortlist); i++ {
-					if shortlist[i].SelfContact.NodeID.Equals(deleteNodeId) {
-						shortlist = append(shortlist[:i], shortlist[i+1:]...)
+			case <-time.After(TIME_INTERVAL):
+				// alpha query
+				for i := 0; i < ALPHA && unqueriedList.Len() > 0; i++ {
+					//check if end
+					stopper.stopMutex.RLock()
+					if stopper.value != 0 {
 						break
 					}
-				}
-				delete(seenMap, deleteNodeId)
-			default:
+					stopper.stopMutex.RUnlock()
 
+					front := unqueriedList.Front()
+					contact := front.Value.(Contact)
+					unqueriedList.Remove(front)
+					go func() {
+						err := k.iterFindValuQeuery(contact, key, contactChan, valueChan, deleteChan)
+						if err == nil {
+							counter.counterMutex.Lock()
+							counter.value++
+							counter.counterMutex.Unlock()
+							counter.counterMutex.RLock()
+							if counter.value >= MAX_BUCKET_SIZE {
+								stopper.stopMutex.Lock()
+								stopper.value = 1
+								stopper.stopMutex.Unlock()
+								stop <- true
+							}
+							counter.counterMutex.RUnlock()
+						}
+					}()
+				}
+			case <-stop:
+				return
+			default:
 			}
 		}
 	}()
 
 	for {
-		stopper.stopMutex.RLock()
-		if stopper.value != 0 {
-			break
-		}
-		stopper.stopMutex.RUnlock()
-		// alpha query
-		for i := 0; i < ALPHA && unqueriedList.Len() > 0; i++ {
-			//check if end
-			stopper.stopMutex.RLock()
-			if stopper.value != 0 {
+		select {
+		case contacts := <-contactChan:
+			for _, contact := range contacts {
+				if _, ok := seenMap[contact.NodeID]; ok == false {
+					shortlist = append(shortlist, k.contactToDistanceContact(contact, key))
+					unqueriedList.PushBack(contact)
+					seenMap[contact.NodeID] = true
+				}
+			}
+			//sort shortlist
+			sort.Sort(ByDistance(shortlist))
+
+			//check if short list is improved
+			for i := 0; i < len(shortlist) && i < MAX_BUCKET_SIZE; i++ {
+				if !oldVersion[i].SelfContact.NodeID.Equals(shortlist[i].SelfContact.NodeID) {
+					isUpdated = true
+					if len(shortlist) <= 20 {
+						oldVersion = shortlist
+					}
+					oldVersion = shortlist[:MAX_BUCKET_SIZE+1]
+				}
+			}
+			if !isUpdated {
+				stopper.stopMutex.Lock()
+				stopper.value = 2
+				stopper.stopMutex.Unlock()
+				stop <- true
 				break
 			}
-			stopper.stopMutex.RUnlock()
-			front := unqueriedList.Front()
-			unqueriedList.Remove(front)
-			contact := front.Value.(Contact)
-			go k.iterFindValuQeuery(&contact, key, contactChan, valueChan, deleteChan)
+		case valuer := <-valueChan:
+			returnValue = valuer.value
+			returnedValueMap[valuer.NodeID] = true
+			stopper.stopMutex.Lock()
+			stopper.value = 3
+			stopper.stopMutex.Unlock()
+			stop <- true
+			if len(valueChan) == 0 {
+				break
+			}
+		case deleteNodeId := <-deleteChan:
+			for i := 0; i < len(shortlist); i++ {
+				if shortlist[i].SelfContact.NodeID.Equals(deleteNodeId) {
+					shortlist = append(shortlist[:i], shortlist[i+1:]...)
+					break
+				}
+			}
+			delete(seenMap, deleteNodeId)
+		default:
+
 		}
 	}
-
-	return "ERR: Not implemented"
+	stopper.stopMutex.RLock()
+	stopType := stopper.value
+	stopper.stopMutex.RUnlock()
+	var returnContacts []Contact
+	var returnString string
+	if len(shortlist) < 20 {
+		returnContacts = k.FindClosestContactsBySort(shortlist)
+	} else {
+		returnContacts = k.FindClosestContactsBySort(shortlist[:MAX_BUCKET_SIZE+1])
+	}
+	if stopType == 3 {
+		for _, contactItem := range returnContacts {
+			if _, ok := returnedValueMap[contactItem.NodeID]; ok == false {
+				k.DoStore(&contactItem, key, returnValue)
+			}
+		}
+		returnString = string(returnValue[:])
+		for k := range returnedValueMap {
+			returnString = returnString + "ID:" + k.AsString()
+		}
+	} else {
+		returnString = k.ContactsToString(returnContacts)
+	}
+	return returnString
 }
 
 //rpc query for iterativefindnode
@@ -598,7 +655,7 @@ func (k *Kademlia) rpcQuery(node Contact, searchId ID, res chan []Contact) error
 	err = client.Call("KademliaCore.FindNode", findNodeRequest, findNodeRes)
 
 	if err != nil {
-		return err;
+		return err
 	}
 
 	defer client.Close()
@@ -613,10 +670,11 @@ func (k *Kademlia) rpcQuery(node Contact, searchId ID, res chan []Contact) error
 
 	return err
 }
-func (k *Kademlia) iterFindValuQeuery(contact *Contact, searchKey ID, contactChan chan []Contact, valuerChan chan Valuer, deleteChan chan ID) {
+func (k *Kademlia) iterFindValuQeuery(contact Contact, searchKey ID, contactChan chan []Contact, valuerChan chan Valuer, deleteChan chan ID) error {
 	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+strconv.Itoa(int(contact.Port)))
 	if err != nil {
 		deleteChan <- contact.NodeID
+		return err
 	}
 
 	//create find value request and result
@@ -632,12 +690,14 @@ func (k *Kademlia) iterFindValuQeuery(contact *Contact, searchKey ID, contactCha
 
 	if err != nil {
 		deleteChan <- contact.NodeID
+		return err
+
 	}
 
 	defer client.Close()
 
 	//update contact
-	k.UpdateContact(*contact)
+	k.UpdateContact(contact)
 	if findValueRes.Nodes != nil {
 		for _, contactItem := range findValueRes.Nodes {
 			k.UpdateContact(contactItem)
@@ -651,6 +711,7 @@ func (k *Kademlia) iterFindValuQeuery(contact *Contact, searchKey ID, contactCha
 	} else if findValueRes.Nodes != nil {
 		contactChan <- findValueRes.Nodes
 	}
+	return err
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -894,4 +955,3 @@ func (k *Kademlia) contactToDistanceContact(contact Contact, id ID) ContactDista
 	contactD.Distance = contact.NodeID.Xor(id)
 	return *contactD
 }
-
