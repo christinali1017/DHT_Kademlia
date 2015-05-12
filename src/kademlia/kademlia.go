@@ -487,6 +487,7 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 	contactChan := make(chan []Contact, MAX_BUCKET_SIZE*MAX_BUCKET_SIZE*2)
 	valueChan := make(chan Valuer, MAX_BUCKET_SIZE*MAX_BUCKET_SIZE*2)
 	deleteChan := make(chan ID, MAX_BUCKET_SIZE*MAX_BUCKET_SIZE*2)
+	stop := make(chan bool)
 
 	//use to record how many rpc query have send and receive respond
 	counter := new(Counter)
@@ -558,7 +559,6 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 	}()
 
 	//stop channel for time
-	stop := make(chan bool)
 	for {
 		select {
 		case <-time.After(TIME_INTERVAL):
@@ -592,7 +592,7 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 				}()
 			}
 		case <-stop:
-			return
+			break
 		default:
 		}
 	}
