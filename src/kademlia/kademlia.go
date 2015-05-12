@@ -426,7 +426,6 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 							stopper.value = 1
 							stopper.stopMutex.Unlock()
 							stop <- true
-							break
 						}
 						counter.counterMutex.RUnlock()
 					}
@@ -439,7 +438,6 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 				}
 				return k.FindClosestContactsBySort(shortlist[:MAX_BUCKET_SIZE+1])
 			}
-			break
 		default:
 		}
 	}
