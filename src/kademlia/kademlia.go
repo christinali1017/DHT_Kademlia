@@ -426,6 +426,7 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 							stopper.value = 1
 							stopper.stopMutex.Unlock()
 							stop <- true
+							break
 						}
 						counter.counterMutex.RUnlock()
 					}
