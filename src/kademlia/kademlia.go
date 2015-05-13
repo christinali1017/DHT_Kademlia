@@ -341,7 +341,7 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 	for _, contact := range contacts {
 		seenMap[contact.NodeID] = true
 		unqueriedList.PushBack(contact)
-		shortlist = append(shortlist, k.contactToDistanceContact(contact, id))
+		shortlist = append(shortlist, k.ContactToDistanceContact(contact, id))
 	}
 
 	//stop channel for time
@@ -354,7 +354,7 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 			case contacts := <-res:
 				for _, contact := range contacts {
 					if _, ok := seenMap[contact.NodeID]; ok == false {
-						shortlist = append(shortlist, k.contactToDistanceContact(contact, id))
+						shortlist = append(shortlist, k.ContactToDistanceContact(contact, id))
 						unqueriedList.PushBack(contact)
 						seenMap[contact.NodeID] = true
 					}
@@ -502,7 +502,7 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 	for _, contact := range contacts {
 		seenMap[contact.NodeID] = true
 		unqueriedList.PushBack(contact)
-		shortlist = append(shortlist, k.contactToDistanceContact(contact, key))
+		shortlist = append(shortlist, k.ContactToDistanceContact(contact, key))
 	}
 
 	go func() {
@@ -511,7 +511,7 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 			case contacts := <-contactChan:
 				for _, contact := range contacts {
 					if _, ok := seenMap[contact.NodeID]; ok == false {
-						shortlist = append(shortlist, k.contactToDistanceContact(contact, key))
+						shortlist = append(shortlist, k.ContactToDistanceContact(contact, key))
 						unqueriedList.PushBack(contact)
 						seenMap[contact.NodeID] = true
 					}
@@ -895,7 +895,7 @@ func (k *Kademlia) PingWithOutUpdate(host net.IP, port uint16) string {
 Functions for Project 2
 ================================================================================ */
 
-func (k *Kademlia) contactToDistanceContact(contact Contact, id ID) ContactDistance {
+func (k *Kademlia) ContactToDistanceContact(contact Contact, id ID) ContactDistance {
 	contactD := new(ContactDistance)
 	contactD.SelfContact = contact
 	contactD.Distance = contact.NodeID.Xor(id)
