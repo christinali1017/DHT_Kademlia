@@ -862,7 +862,7 @@ func (a ByDistance) Less(i, j int) bool { return a[i].Distance.Less(a[j].Distanc
 func (k *Kademlia) ContactsToString(contacts []Contact) string {
 	var res string
 	for _, contact := range contacts {
-		res = res + "{NodeID: " + contact.NodeID.AsString() + ", Host: " + contact.Host.String() + ", Port: " + strconv.Itoa(int(contact.Port)) + "},"
+		res = res + "{NodeID: " + contact.NodeID.AsString() + ", Host: " + contact.Host.String() + ", Port: " + strconv.Itoa(int(contact.Port)) + "}"
 	}
 	return res[:len(res)]
 }
