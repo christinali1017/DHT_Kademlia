@@ -26,10 +26,11 @@ import (
 // 	k     = 20
 // )
 const (
-	TOTAL_BUCKETS   = 8 * IDBytes
-	MAX_BUCKET_SIZE = 20
-	ALPHA           = 3
-	TIME_INTERVAL time.Duration   = 300 * time.Millisecond
+	TOTAL_BUCKETS                 = 8 * IDBytes
+	MAX_BUCKET_SIZE               = 20
+	ALPHA                         = 3
+	TIME_INTERVAL   time.Duration = 500 * time.Millisecond
+	RERPONSE_LIMIT  time.Duration = 1000 * time.Millisecond
 )
 
 // Kademlia type. You can put whatever state you need in this.
@@ -68,12 +69,12 @@ type Valuer struct {
 }
 
 type UnqueriedList struct {
-	list []ContactDistance
+	list  []ContactDistance
 	mutex sync.RWMutex
 }
 
 type ResultShortlist struct {
-	list []Contact
+	list  []Contact
 	mutex sync.RWMutex
 }
 
@@ -82,6 +83,23 @@ type CheckImproved struct {
 	value bool
 	mutex sync.RWMutex
 }
+
+type QueryWaitList struct {
+	waitList       []ContactDistance
+	queryListMutex sync.RWMutex
+}
+
+type ShortestDistance struct {
+	shortDistanceMutex sync.RWMutex
+	Distance           ID
+	selfContact        Contact
+}
+
+type Contacter struct {
+	selfContact Contact
+	contactList []Contact
+}
+
 
 func NewKademlia(laddr string) *Kademlia {
 	// TODO: Initialize other state here as you add functionality.
@@ -349,15 +367,15 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 	//result to return
 	resultShortlist := new(ResultShortlist)
 
-	//global closest 
+	//global closest
 	closest := k.SelfContact.NodeID.Xor(id)
 
 	//check if unqueried list is improved
 	checkImproved := new(CheckImproved)
 	checkImproved.value = true
 
-		//stop channel for time
-	stop := make(chan bool)
+	//stop channel for time
+	stop := make(chan bool, 100)
 
 	//initialize unqueriedlist and seenmap
 	for i := 0; i < ALPHA && i < len(initializeContacts); i++ {
@@ -365,12 +383,6 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 		seenMap[contact.NodeID] = true
 		unqueriedList.list = append(unqueriedList.list, k.ContactToDistanceContact(contact, id))
 	}
-
-	// fmt.Println(".........find closet contact.........")
-	// fmt.Println(k.ContactsToString(k.FindClosestContacts(id, k.NodeID)))
-
-	// fmt.Println(".........find closet contact.........")
-	// fmt.Println(k.ContactsToString(initializeContacts))
 
 	//add res to shortlist
 	go func() {
@@ -385,10 +397,12 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 					}
 				}
 
-				//append closest node and sort 
+				//append closest node and sort
 				unqueriedList.mutex.Lock()
 				unqueriedList.list = append(unqueriedList.list, tempContacts...)
 				sort.Sort(ByDistance(unqueriedList.list))
+				// fmt.Println("unqueried list")
+				// fmt.Println(k.FindClosestContactsBySort(unqueriedList.list))
 				unqueriedList.mutex.Unlock()
 
 				//check if unqueried is improved,
@@ -410,6 +424,8 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 						checkImproved.mutex.Lock()
 						checkImproved.value = false
 						checkImproved.mutex.Unlock()
+					} else if unqueriedListLength != 0 && firstElement.SelfContact.NodeID.Xor(id).Compare(closest) != 1 {
+						closest = firstElement.SelfContact.NodeID.Xor(id)
 					}
 
 					if unqueriedListLength == 0 {
@@ -420,7 +436,7 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 							stop <- true
 							break
 						} else {
-							continue;
+							continue
 						}
 					}
 				}
@@ -430,70 +446,82 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 	}()
 
 	for {
-			// check if unqueried list is empty and if there response in flight
+		// check if unqueried list is empty and if there response in flight
+		unqueriedList.mutex.RLock()
+		tempLength := len(unqueriedList.list)
+		unqueriedList.mutex.RUnlock()
+
+		if tempLength == 0 {
+			time.Sleep(TIME_INTERVAL)
 			unqueriedList.mutex.RLock()
-			if len(unqueriedList.list) == 0 {
-				time.Sleep(TIME_INTERVAL)
-				if len(res) == 0 {
-					stop <- true
-					break
-				}
-			}
+			tempLength = len(unqueriedList.list)
 			unqueriedList.mutex.RUnlock()
 
-			// alpha query
-			for i := 0; i < ALPHA; i++ {
-				//check if unqueried list is empty
-				unqueriedList.mutex.RLock()
-				if(len(unqueriedList.list) ==0){
-					break;
-				}
-				front := unqueriedList.list[0]
-				unqueriedList.mutex.RUnlock()
-
-				//check if end
-				stopper.stopMutex.RLock()
-				if stopper.value != 0 {
-					break
-				}
-				stopper.stopMutex.RUnlock()
-
-				//get first contact from unqueriedList
-				test := make([]Contact, 0)
-				test = append(test, front.SelfContact)
-				//remove this contact
-				unqueriedList.mutex.Lock()
-				unqueriedList.list = unqueriedList.list[1:]
-				unqueriedList.mutex.Unlock()
-
-				//type contact
-				contact := front.SelfContact
-
-				go func() {
-					err, response := k.rpcQuery(contact, id, res)
-
-					if err == nil {
-
-						// add this active node to shortlist
-						shortlist <- contact
-
-
-						if len(shortlist) >= MAX_BUCKET_SIZE {
-							stopper.stopMutex.Lock()
-							stopper.value = 1
-							stopper.stopMutex.Unlock()
-							stop <- true
-							return 
-						}
-
-						checkImproved.mutex.RLock()
-						if checkImproved.value == true {
-							res <- response
-						}
-						checkImproved.mutex.RUnlock()
-					}
-				}()
+			if len(res) == 0 && tempLength == 0 {
+				stop <- true
+				break
 			}
+		}
+
+		// alpha query
+		for i := 0; i < ALPHA; i++ {
+			//check if unqueried list is empty
+			unqueriedList.mutex.RLock()
+			unqueriedListLength := len(unqueriedList.list)
+			unqueriedList.mutex.RUnlock()
+			if unqueriedListLength == 0 {
+				break
+			}
+
+			unqueriedList.mutex.RLock()
+			front := unqueriedList.list[0]
+			unqueriedList.mutex.RUnlock()
+
+			//check if end
+			stopper.stopMutex.RLock()
+			stopperValue := stopper.value
+			stopper.stopMutex.RUnlock()
+
+			if stopperValue != 0 {
+				break
+			}
+
+			//get first contact from unqueriedList
+			test := make([]Contact, 0)
+			test = append(test, front.SelfContact)
+			//remove this contact
+			unqueriedList.mutex.Lock()
+			unqueriedList.list = unqueriedList.list[1:]
+			unqueriedList.mutex.Unlock()
+
+			//type contact
+			contact := front.SelfContact
+
+			go func() {
+				err, response := k.rpcQuery(contact, id, res)
+
+				if err == nil {
+
+					// add this active node to shortlist
+					shortlist <- contact
+
+					if len(shortlist) >= MAX_BUCKET_SIZE {
+						stopper.stopMutex.Lock()
+						stopper.value = 1
+						stopper.stopMutex.Unlock()
+						stop <- true
+						return
+					}
+
+					//if is improved add the response to the res
+					checkImproved.mutex.RLock()
+					if checkImproved.value == true {
+						res <- response
+					}
+					checkImproved.mutex.RUnlock()
+				}
+			}()
+		}
 		select {
 
 		case <-time.After(TIME_INTERVAL):
@@ -503,8 +531,8 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 				resultShortlist.list = make([]Contact, len(shortlist))
 				channelLength := len(shortlist)
 				for i := 0; i < channelLength; i++ {
-					resultShortlist.list[i] = <- shortlist
-				} 
+					resultShortlist.list[i] = <-shortlist
+				}
 				resultShortlist.mutex.Unlock()
 				return resultShortlist.list
 			}
@@ -514,6 +542,7 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 	}
 
 	//make sure that res is flushed to the shortlist
+
 	for {
 		if len(shortlist) == MAX_BUCKET_SIZE || len(res) == 0 {
 			break
@@ -525,10 +554,10 @@ func (k *Kademlia) IterativeFindNode(id ID) []Contact {
 	resultShortlist.list = make([]Contact, len(shortlist))
 	channelLength := len(shortlist)
 	for i := 0; i < channelLength; i++ {
-		resultShortlist.list[i] = <- shortlist
-	} 
+		resultShortlist.list[i] = <-shortlist
+	}
 	resultShortlist.mutex.Unlock()
-	return resultShortlist.list	
+	return resultShortlist.list
 }
 
 func (k *Kademlia) DoIterativeStore(key ID, value []byte) string {
@@ -544,88 +573,104 @@ func (k *Kademlia) DoIterativeStore(key ID, value []byte) string {
 	return result
 }
 func (k *Kademlia) DoIterativeFindValue(key ID) string {
+	// fmt.Println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Come in to Iterative Find Value~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 	// For project 2!
-	shortlist := make([]ContactDistance, 0)
+	shortList := make(chan Contact, MAX_BUCKET_SIZE)
 
 	//node that we have seen
 	seenMap := make(map[ID]bool)
 	returnedValueMap := make(map[ID]bool)
 
 	//nodes that have not been queried yet
-	unqueriedList := list.New()
+	queryWaitList := new(QueryWaitList)
+	queryWaitList.waitList = make([]ContactDistance, 0)
 
 	//init the stopper
 	stopper := new(Stopper)
 	stopper.value = 0
 
-	contactChan := make(chan []Contact, MAX_BUCKET_SIZE*MAX_BUCKET_SIZE*2)
-	valueChan := make(chan Valuer, MAX_BUCKET_SIZE*MAX_BUCKET_SIZE*2)
-	deleteChan := make(chan ID, MAX_BUCKET_SIZE*MAX_BUCKET_SIZE*2)
-	stop := make(chan bool)
+	//init CloestNode
+	clostestNode := new(ShortestDistance)
+	for i := 0; i < IDBytes; i++ {
+		clostestNode.Distance[i] = uint8(255)
+	}
+	var clostestNodeImproved bool
+	clostestNodeImproved = true
 
-	//use to record how many rpc query have send and receive respond
-	counter := new(Counter)
-	//k contact of old short list
-	oldVersion := make([]ContactDistance, MAX_BUCKET_SIZE)
-
-	//bool for check if the shortlist is updated
-	isUpdated := false
+	// contactChan := make(chan []Contact, MAX_BUCKET_SIZE*MAX_BUCKET_SIZE*2)
+	contactChan := make(chan Contacter, MAX_BUCKET_SIZE*3)
+	valueChan := make(chan Valuer, MAX_BUCKET_SIZE*3)
+	stop := make(chan bool, MAX_BUCKET_SIZE)
 
 	//initialize
 	var returnValue []byte
-	contacts := k.FindClosestContacts(key, k.NodeID)[:3]
+	contacts := k.FindClosestContacts(key, k.NodeID)
+	if len(contacts) > 3 {
+		contacts = contacts[:ALPHA]
+	}
 	for _, contact := range contacts {
 		seenMap[contact.NodeID] = true
-		unqueriedList.PushBack(contact)
-		shortlist = append(shortlist, k.ContactToDistanceContact(contact, key))
+		queryWaitList.queryListMutex.Lock()
+		queryWaitList.waitList = append(queryWaitList.waitList, k.ContactToDistanceContact(contact, key))
+		queryWaitList.queryListMutex.Unlock()
+
 	}
 
 	go func() {
 		for {
 			select {
-			case contacts := <-contactChan:
-				for _, contact := range contacts {
-					if _, ok := seenMap[contact.NodeID]; ok == false {
-						shortlist = append(shortlist, k.ContactToDistanceContact(contact, key))
-						unqueriedList.PushBack(contact)
-						seenMap[contact.NodeID] = true
-					}
-				}
-				//sort shortlist
-				sort.Sort(ByDistance(shortlist))
-
-				//check if short list is improved
-				for i := 0; i < len(shortlist) && i < MAX_BUCKET_SIZE; i++ {
-					if !oldVersion[i].SelfContact.NodeID.Equals(shortlist[i].SelfContact.NodeID) {
-						isUpdated = true
-						if len(shortlist) <= 20 {
-							oldVersion = shortlist
-						}
-						oldVersion = shortlist[:MAX_BUCKET_SIZE+1]
-					}
-				}
-				if !isUpdated {
+			case contacter := <-contactChan:
+				// fmt.Println("ShortList Active Incoming")
+				contacts := contacter.contactList
+				activeContact := contacter.selfContact
+				shortList <- activeContact
+				if len(shortList) == MAX_BUCKET_SIZE {
 					stopper.stopMutex.Lock()
-					stopper.value = 2
+					stopper.value = 1
 					stopper.stopMutex.Unlock()
 					stop <- true
-					break
+					return
+				}
+				if clostestNodeImproved && len(contacts) > 0 {
+					for _, contact := range contacts {
+						if _, ok := seenMap[contact.NodeID]; ok == false {
+							queryWaitList.queryListMutex.Lock()
+							queryWaitList.waitList = append(queryWaitList.waitList, k.ContactToDistanceContact(contact, key))
+							queryWaitList.queryListMutex.Unlock()
+							seenMap[contact.NodeID] = true
+						}
+					}
+					//sort shortlist
+					queryWaitList.queryListMutex.Lock()
+					sort.Sort(ByDistance(queryWaitList.waitList))
+					if len(queryWaitList.waitList) == 0 {
+						// fmt.Println("not improve because wait list length is !!!!!!!!!!!!!")
+						clostestNodeImproved = false
+						break
+					}
+					clostestTemp := queryWaitList.waitList[0]
+					distanceTemp := clostestTemp.Distance
+					queryWaitList.queryListMutex.Unlock()
+					//check if short list is improved
+					clostestNode.shortDistanceMutex.Lock()
+					if clostestNode.Distance.Compare(clostestNode.Distance) == 1 {
+						// fmt.Println("not improve because no close!!!!!!!!!!!!!!!!!!!!!!!")
+						clostestNodeImproved = false
+					} else {
+						clostestNode.Distance = distanceTemp
+						clostestNode.selfContact = clostestTemp.SelfContact
+					}
+					clostestNode.shortDistanceMutex.Unlock()
 				}
 			case valuer := <-valueChan:
+				fmt.Println("Value returned")
 				returnValue = valuer.value
 				returnedValueMap[valuer.NodeID] = true
 				stopper.stopMutex.Lock()
 				stopper.value = 3
 				stopper.stopMutex.Unlock()
 				stop <- true
-			case deleteNodeId := <-deleteChan:
-				for i := 0; i < len(shortlist); i++ {
-					if shortlist[i].SelfContact.NodeID.Equals(deleteNodeId) {
-						shortlist = append(shortlist[:i], shortlist[i+1:]...)
-						break
-					}
-				}
-				delete(seenMap, deleteNodeId)
+				return
 			default:
 
 			}
@@ -633,75 +678,72 @@ func (k *Kademlia) DoIterativeFindValue(key ID) string {
 	}()
 
 	//stop channel for time
+HandleLoop:
 	for {
+		queryWaitList.queryListMutex.RLock()
+		querylistLen := len(queryWaitList.waitList)
+		queryWaitList.queryListMutex.RUnlock()
+		if len(contactChan) == 0 && len(valueChan) == 0 {
+			if querylistLen == 0 {
+				stopper.stopMutex.Lock()
+				stopper.value = 2
+				stopper.stopMutex.Unlock()
+				// fmt.Println("Set the stop")
+				stop <- true
+			}
+		}
+		queryWaitList.queryListMutex.Lock()
+		sort.Sort(ByDistance(queryWaitList.waitList))
+		queryWaitList.queryListMutex.Unlock()
+
+		for i := 0; i < ALPHA && querylistLen > 0; i++ {
+			//check if end
+			stopper.stopMutex.RLock()
+			if stopper.value != 0 {
+				break
+			}
+			stopper.stopMutex.RUnlock()
+			queryWaitList.queryListMutex.Lock()
+			contact := queryWaitList.waitList[0].SelfContact
+			queryWaitList.waitList = queryWaitList.waitList[1:]
+			querylistLen = len(queryWaitList.waitList)
+			queryWaitList.queryListMutex.Unlock()
+
+			go func() {
+				fmt.Println("Sent a RPC")
+				k.iterFindValuQeuery(contact, key, contactChan, valueChan)
+			}()
+		}
 		select {
 		case <-time.After(TIME_INTERVAL):
-			// alpha query
-			for i := 0; i < ALPHA && unqueriedList.Len() > 0; i++ {
-				//check if end
-				stopper.stopMutex.RLock()
-				if stopper.value != 0 {
-					break
-				}
-				stopper.stopMutex.RUnlock()
-
-				front := unqueriedList.Front()
-				contact := front.Value.(Contact)
-				unqueriedList.Remove(front)
-				go func() {
-					err := k.iterFindValuQeuery(contact, key, contactChan, valueChan, deleteChan)
-					if err == nil {
-						counter.counterMutex.Lock()
-						counter.value++
-						counter.counterMutex.Unlock()
-						counter.counterMutex.RLock()
-						if counter.value >= MAX_BUCKET_SIZE {
-							stopper.stopMutex.Lock()
-							stopper.value = 1
-							stopper.stopMutex.Unlock()
-							stop <- true
-						}
-						counter.counterMutex.RUnlock()
-					}
-				}()
-			}
+			break
 		case <-stop:
-			break
-		default:
+			// fmt.Println("Stop here Print")
+			break HandleLoop
 		}
 	}
-	//wait till zero
-	for {
-		if len(valueChan) == 0 {
-			break
-		}
-	}
+
 	stopper.stopMutex.RLock()
 	stopType := stopper.value
 	stopper.stopMutex.RUnlock()
-	var returnContacts []Contact
 	var returnString string
-	if len(shortlist) < 20 {
-		returnContacts = k.FindClosestContactsBySort(shortlist)
-	} else {
-		returnContacts = k.FindClosestContactsBySort(shortlist[:MAX_BUCKET_SIZE+1])
-	}
+	// var returnContacts []Contact
+
 	if stopType == 3 {
-		for _, contactItem := range returnContacts {
-			if _, ok := returnedValueMap[contactItem.NodeID]; ok == false {
-				k.DoStore(&contactItem, key, returnValue)
-			}
-		}
-		returnString = string(returnValue[:])
+		
+		clostestNode.shortDistanceMutex.RLock()
+		dostoreContact := clostestNode.selfContact
+		clostestNode.shortDistanceMutex.RUnlock()
+		k.DoStore(&dostoreContact, key, returnValue)
 		for k := range returnedValueMap {
-			returnString = returnString + "ID:" + k.AsString()
+			returnString = returnString + " ID: " + k.AsString() + " Value: " + string(returnValue[:]) + ", "
 		}
+		returnString = returnString[:len(returnString)-2]
 	} else {
 		returnString = "ERR: Value not found"
 	}
 	return returnString
 }
-
 //rpc query for iterativefindnode
 func (k *Kademlia) rpcQuery(node Contact, searchId ID, res chan []Contact) (error, []Contact) {
 	client, err := rpc.DialHTTP("tcp", node.Host.String()+":"+strconv.Itoa(int(node.Port)))
@@ -735,10 +777,9 @@ func (k *Kademlia) rpcQuery(node Contact, searchId ID, res chan []Contact) (erro
 
 	return err, findNodeRes.Nodes
 }
-func (k *Kademlia) iterFindValuQeuery(contact Contact, searchKey ID, contactChan chan []Contact, valuerChan chan Valuer, deleteChan chan ID) error {
-	client, err := rpc.DialHTTP("tcp", contact.Host.String()+":"+strconv.Itoa(int(contact.Port)))
+func (k *Kademlia) iterFindValuQeuery(contact Contact, searchKey ID, contactChan chan Contacter, valuerChan chan Valuer) error {
+	client, err := rpc.DialHTTPPath("tcp", contact.Host.String()+":"+strconv.Itoa(int(contact.Port)), rpc.DefaultRPCPath+strconv.Itoa(int(contact.Port)))
 	if err != nil {
-		deleteChan <- contact.NodeID
 		return err
 	}
 
@@ -752,9 +793,8 @@ func (k *Kademlia) iterFindValuQeuery(contact Contact, searchKey ID, contactChan
 
 	//find value
 	err = client.Call("KademliaCore.FindValue", findValueReq, findValueRes)
-
+	// fmt.Println("Get RPC call back")
 	if err != nil {
-		deleteChan <- contact.NodeID
 		return err
 
 	}
@@ -772,9 +812,14 @@ func (k *Kademlia) iterFindValuQeuery(contact Contact, searchKey ID, contactChan
 		valuer := new(Valuer)
 		valuer.value = findValueRes.Value
 		valuer.NodeID = contact.NodeID
+		// fmt.Println("Put things in valueChan")
 		valuerChan <- *valuer
 	} else if findValueRes.Nodes != nil {
-		contactChan <- findValueRes.Nodes
+		contacter := new(Contacter)
+		contacter.contactList = findValueRes.Nodes
+		contacter.selfContact = contact
+		// fmt.Println("Put things in contactChan")
+		contactChan <- *contacter
 	}
 	return err
 }
